@@ -55,7 +55,10 @@ lazy_static! {
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
 
-    thread::spawn(start_server);
+    thread::Builder::new()
+        .name("server".to_string())
+        .spawn(start_server)
+        .unwrap();
     start_cli();
 }
 
@@ -114,9 +117,12 @@ fn start_server() {
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        thread::spawn(move || {
-            handle_client(stream);
-        });
+        thread::Builder::new()
+            .name(format!("client({})", stream.local_addr().unwrap()))
+            .spawn(move || {
+                handle_client(stream);
+            })
+            .unwrap();
     }
 }
 
@@ -203,39 +209,45 @@ fn handle_client(client: TcpStream) {
     let s2c_connected = c2s_connected.clone();
 
     // c -> s
-    thread::spawn(move || {
-        let mut buffer = vec![0; 128];
-        while *c2s_connected.read().unwrap() {
-            let length = client_read.read(&mut buffer).unwrap();
+    thread::Builder::new()
+        .name(format!("client({}) c->s", client_address))
+        .spawn(move || {
+            let mut buffer = vec![0; 128];
+            while *c2s_connected.read().unwrap() {
+                let length = client_read.read(&mut buffer).unwrap();
 
-            if length > 0 {
-                server_write
-                    .write_all(buffer.get(0..length).unwrap())
-                    .unwrap();
-            } else {
-                info!("Client({}) closed connection to router.", client_address);
-                *c2s_connected.write().unwrap() = false;
+                if length > 0 {
+                    server_write
+                        .write_all(buffer.get(0..length).unwrap())
+                        .unwrap();
+                } else {
+                    info!("Client({}) closed connection to router.", client_address);
+                    *c2s_connected.write().unwrap() = false;
+                }
             }
-        }
-    });
+        })
+        .unwrap();
 
     // s -> c
-    thread::spawn(move || {
-        let mut buffer = vec![0; 128];
-        while *s2c_connected.read().unwrap() {
-            let length = server_read.read(&mut buffer).unwrap();
+    thread::Builder::new()
+        .name(format!("client({}) s->c", client_address))
+        .spawn(move || {
+            let mut buffer = vec![0; 128];
+            while *s2c_connected.read().unwrap() {
+                let length = server_read.read(&mut buffer).unwrap();
 
-            if length > 0 {
-                client_write
-                    .write_all(buffer.get(0..length).unwrap())
-                    .unwrap();
-            } else {
-                info!(
-                    "Server(client: {}) closed connection to router.",
-                    client_address
-                );
-                *s2c_connected.write().unwrap() = false;
+                if length > 0 {
+                    client_write
+                        .write_all(buffer.get(0..length).unwrap())
+                        .unwrap();
+                } else {
+                    info!(
+                        "Server(client: {}) closed connection to router.",
+                        client_address
+                    );
+                    *s2c_connected.write().unwrap() = false;
+                }
             }
-        }
-    });
+        })
+        .unwrap();
 }
