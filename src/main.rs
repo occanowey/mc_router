@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate lazy_static;
+
+use rustbreak::{deser::Ron, FileDatabase};
+use serde::{Deserialize, Serialize};
 use std::{
     io::{BufReader, Read, Write},
     net::{TcpListener, TcpStream},
@@ -26,12 +31,29 @@ fn read_varint(offset: usize, src: &[u8]) -> (i32, usize) {
     (acc, i)
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Forward {
+    hostname: String,
+    target: String,
+}
+
+lazy_static! {
+    static ref FORWARDS_DB: FileDatabase<Vec<Forward>, Ron> = {
+        let db = FileDatabase::load_from_path_or_default("forwards.ron")
+            .expect("Create database from path");
+
+        db.load().expect("Config to load");
+
+        db
+    };
+}
+
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:8081").unwrap();
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        println!("new connection");
+        println!("new connection {}", stream.local_addr().unwrap());
 
         handle_client(stream);
     }
@@ -87,7 +109,19 @@ fn handle_client(client: TcpStream) {
     println!("\tnext state = {}", next_state);
     println!("}}");
 
-    let mut server = TcpStream::connect("127.0.0.1:25565").unwrap();
+    let forwards = FORWARDS_DB.borrow_data().unwrap();
+    let forward = forwards
+        .iter()
+        .find(|forward| forward.hostname == server_address);
+
+    if forward.is_none() {
+        return;
+    }
+    let forward = forward.unwrap();
+
+    println!("forwarding to {:?}", forward);
+
+    let mut server = TcpStream::connect(&forward.target).unwrap();
     server.write_all(&buffer).unwrap();
     server.write_all(client.buffer()).unwrap();
 
@@ -107,7 +141,7 @@ fn handle_client(client: TcpStream) {
             let length = client_read.read(&mut buffer).unwrap();
 
             if length > 0 {
-                server_write.write(buffer.get(0..length).unwrap()).unwrap();
+                server_write.write_all(buffer.get(0..length).unwrap()).unwrap();
             } else {
                 *c2s_connected.write().unwrap() = false;
             }
@@ -121,7 +155,7 @@ fn handle_client(client: TcpStream) {
             let length = server_read.read(&mut buffer).unwrap();
 
             if length > 0 {
-                client_write.write(buffer.get(0..length).unwrap()).unwrap();
+                client_write.write_all(buffer.get(0..length).unwrap()).unwrap();
             } else {
                 *s2c_connected.write().unwrap() = false;
             }
