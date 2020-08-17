@@ -7,7 +7,7 @@ use log::{debug, info};
 use rustbreak::{deser::Ron, FileDatabase};
 use serde::{Deserialize, Serialize};
 use std::{
-    env,
+    fs,
     io::{self, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     sync::{Arc, RwLock},
@@ -110,7 +110,7 @@ fn start_cli() {
 }
 
 fn start_server() {
-    let address = env::var("MCR_ADDRESS").expect("Address required");
+    let address = fs::read_to_string("address").expect("Address required");
 
     info!("Starting server on {}", address);
     let listener = TcpListener::bind(address).unwrap();
