@@ -4,11 +4,12 @@ extern crate lazy_static;
 use rustbreak::{deser::Ron, FileDatabase};
 use serde::{Deserialize, Serialize};
 use std::{
-    io::{BufReader, Read, Write},
+    io::{BufReader, Read, Write, self},
     net::{TcpListener, TcpStream},
     sync::{Arc, RwLock},
     thread,
 };
+use io::BufRead;
 
 fn read_varint(offset: usize, src: &[u8]) -> (i32, usize) {
     let mut acc = 0;
@@ -49,13 +50,59 @@ lazy_static! {
 }
 
 fn main() {
-    let listener = TcpListener::bind("0.0.0.0:8081").unwrap();
+    thread::spawn(|| {
+        let listener = TcpListener::bind("0.0.0.0:8081").unwrap();
 
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        println!("new connection {}", stream.local_addr().unwrap());
+        for stream in listener.incoming() {
+            let stream = stream.unwrap();
+            println!("new connection {}", stream.local_addr().unwrap());
 
-        handle_client(stream);
+            handle_client(stream);
+        }
+    });
+
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = line.unwrap();
+        let mut parts = line.split_whitespace();
+
+        let command = parts.next().unwrap().to_lowercase();
+        match command.as_str() {
+            "list" => {
+                let forwards = FORWARDS_DB.borrow_data().unwrap();
+
+                println!("forwards:");
+                for forward in forwards.iter() {
+                    println!("{} -> {}", forward.hostname, forward.target);
+                }
+            },
+
+            "forward" => {
+                let hostname = parts.next();
+                let target = parts.next();
+
+                if hostname.is_none() || target.is_none() {
+                    println!("usage: forward <hostname> <target>");
+                } else {
+                    FORWARDS_DB.write(|db| {
+                        db.push(Forward {
+                            hostname: hostname.unwrap().to_string(),
+                            target: target.unwrap().to_string(),
+                        });
+                    })
+                    .unwrap();
+
+                    FORWARDS_DB.save().unwrap();
+                }
+            },
+
+            "reload" => {
+                FORWARDS_DB.load().unwrap();
+                println!("reloaded forwards");
+            }
+
+            _ => println!("Unknown command '{}'", command),
+        }
     }
 }
 
