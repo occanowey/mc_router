@@ -114,7 +114,9 @@ fn start_server() {
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        handle_client(stream);
+        thread::spawn(move || {
+            handle_client(stream);
+        });
     }
 }
 
