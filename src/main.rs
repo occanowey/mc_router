@@ -7,11 +7,12 @@ use log::{debug, info};
 use rustbreak::{deser::Ron, FileDatabase};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
+    env,
     io::{self, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     sync::{Arc, RwLock},
-    thread, env, time::Duration,
+    thread,
+    time::Duration,
 };
 
 fn read_varint(offset: usize, src: &[u8]) -> (i32, usize) {
@@ -120,7 +121,7 @@ fn start_server(address: &str) {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         thread::Builder::new()
-            .name(format!("client({})", stream.local_addr().unwrap()))
+            .name(format!("client({})", stream.peer_addr().unwrap()))
             .spawn(move || {
                 handle_client(stream);
             })
@@ -129,7 +130,7 @@ fn start_server(address: &str) {
 }
 
 fn handle_client(client: TcpStream) {
-    let client_address = client.local_addr().unwrap();
+    let client_address = client.peer_addr().unwrap();
     info!("New connection from {}", client_address);
 
     let mut client = BufReader::new(client);
