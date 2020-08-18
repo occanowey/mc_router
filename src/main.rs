@@ -11,7 +11,7 @@ use std::{
     io::{self, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     sync::{Arc, RwLock},
-    thread,
+    thread, env, time::Duration,
 };
 
 fn read_varint(offset: usize, src: &[u8]) -> (i32, usize) {
@@ -55,9 +55,11 @@ lazy_static! {
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
 
+    let address = env::args().skip(1).next().expect("address required");
+
     thread::Builder::new()
         .name("server".to_string())
-        .spawn(start_server)
+        .spawn(move || start_server(&address))
         .unwrap();
     start_cli();
 }
@@ -109,8 +111,8 @@ fn start_cli() {
     }
 }
 
-fn start_server() {
-    let address = fs::read_to_string("address").expect("Address required");
+fn start_server(address: &str) {
+    thread::sleep(Duration::from_millis(250));
 
     info!("Starting server on {}", address);
     let listener = TcpListener::bind(address).unwrap();
