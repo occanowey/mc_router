@@ -2,6 +2,8 @@
 extern crate lazy_static;
 
 mod client;
+mod read_types;
+mod util;
 
 use client::spawn_client_handler;
 use fern::colors::{Color, ColoredLevelConfig};
