@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
-use env_logger::Env;
+use fern::colors::{Color, ColoredLevelConfig};
 use io::BufRead;
 use log::{debug, info};
 use rustbreak::{deser::Ron, FileDatabase};
@@ -54,7 +54,7 @@ lazy_static! {
 }
 
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    setup_logger().unwrap();
 
     let address = env::args().nth(1).expect("address required");
 
@@ -63,6 +63,47 @@ fn main() {
         .spawn(move || start_server(&address))
         .unwrap();
     start_cli();
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    let colors = ColoredLevelConfig::new()
+        .error(Color::Red)
+        .warn(Color::Yellow)
+        .info(Color::Green)
+        .debug(Color::Blue)
+        .trace(Color::Cyan);
+
+    let file_logger = fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d-%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .chain(fern::log_file("output.log")?);
+
+    let stdout_logger = fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d-%H:%M:%S]"),
+                record.target(),
+                colors.color(record.level()),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .chain(std::io::stdout());
+
+    fern::Dispatch::new()
+        .chain(file_logger)
+        .chain(stdout_logger)
+        .apply()?;
+
+    Ok(())
 }
 
 fn start_cli() {
