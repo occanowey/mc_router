@@ -56,7 +56,7 @@ lazy_static! {
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
 
-    let address = env::args().skip(1).next().expect("address required");
+    let address = env::args().nth(1).expect("address required");
 
     thread::Builder::new()
         .name("server".to_string())
@@ -162,12 +162,16 @@ fn handle_client(client: TcpStream) {
     index += protocol_version_length;
 
     // messy
-    let server_address = {
+    let (server_address, fml) = {
         let (length, length_length) = read_varint(index, &buffer);
         index += length_length;
         let data = &buffer[index..index + length as usize];
         index += length as usize;
-        String::from_utf8(data.to_vec()).unwrap()
+
+        let address = String::from_utf8(data.to_vec()).unwrap();
+        let fml = address.ends_with("\0FML\0");
+
+        (address.replace("\0FML\0", ""), fml)
     };
 
     let server_port = ((buffer[index] as u16) << 8) | buffer[index + 1] as u16;
@@ -178,11 +182,12 @@ fn handle_client(client: TcpStream) {
     debug!(
         "Handshake packet recieved: ({}) {{
     protocol version = {}
-    server address = {}
+    server address = {:?}
     server port = {}
     next state = {}
+    fml = {}
 }}",
-        id, protocol_version, server_address, server_port, next_state
+        id, protocol_version, server_address, server_port, next_state, fml
     );
 
     let forwards = FORWARDS_DB.borrow_data().unwrap();
