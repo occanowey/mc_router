@@ -2,36 +2,27 @@
 extern crate lazy_static;
 
 mod client;
+mod config;
+mod logger;
 mod read_types;
 mod util;
-mod logger;
 
 use client::spawn_client_handler;
+use config::{Config, Forward};
 use io::BufRead;
 use log::info;
-use rustbreak::{deser::Ron, FileDatabase};
-use serde::{Deserialize, Serialize};
-use std::{env, io, net::TcpListener, thread, time::Duration};
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Forward {
-    hostname: String,
-    target: String,
-}
+use std::{env, io, net::TcpListener, sync::RwLock, thread, time::Duration};
 
 lazy_static! {
-    static ref FORWARDS_DB: FileDatabase<Vec<Forward>, Ron> = {
-        let db = FileDatabase::load_from_path_or_default("forwards.ron")
-            .expect("Create database from path");
-
-        db.load().expect("Config to load");
-
-        db
-    };
+    static ref CONFIG: RwLock<Config> = RwLock::new(Default::default());
 }
 
 fn main() {
     logger::setup().unwrap();
+
+    {
+        *CONFIG.write().unwrap() = config::load().unwrap()
+    }
 
     let address = env::args().nth(1).expect("address required");
 
@@ -51,10 +42,10 @@ fn start_cli() {
         let command = parts.next().unwrap().to_lowercase();
         match command.as_str() {
             "list" => {
-                let forwards = FORWARDS_DB.borrow_data().unwrap();
+                let config = CONFIG.read().unwrap();
 
                 println!("forwards:");
-                for forward in forwards.iter() {
+                for forward in config.forwards.iter() {
                     println!("{} -> {}", forward.hostname, forward.target);
                 }
             }
@@ -66,21 +57,20 @@ fn start_cli() {
                 if hostname.is_none() || target.is_none() {
                     println!("usage: forward <hostname> <target>");
                 } else {
-                    FORWARDS_DB
-                        .write(|db| {
-                            db.push(Forward {
-                                hostname: hostname.unwrap().to_string(),
-                                target: target.unwrap().to_string(),
-                            });
-                        })
-                        .unwrap();
+                    {
+                        let mut config = CONFIG.write().unwrap();
+                        (*config).forwards.push(Forward {
+                            hostname: hostname.unwrap().to_string(),
+                            target: target.unwrap().to_string(),
+                        });
+                    }
 
-                    FORWARDS_DB.save().unwrap();
+                    config::save(&CONFIG.read().unwrap()).unwrap();
                 }
             }
 
             "reload" => {
-                FORWARDS_DB.load().unwrap();
+                *CONFIG.write().unwrap() = config::load().unwrap();
                 println!("reloaded forwards");
             }
 

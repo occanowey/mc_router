@@ -1,7 +1,6 @@
 mod error;
 
-use crate::FORWARDS_DB;
-use crate::{read_types::ReadMCTypesExt, util::CachedReader};
+use crate::{read_types::ReadMCTypesExt, util::CachedReader, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
 use log::{debug, error, info};
@@ -32,8 +31,9 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     let handshake = decode_handshake(&mut client)?;
     debug!("Handshake packet recieved: {:?}", handshake);
 
-    let forwards = FORWARDS_DB.borrow_data().unwrap();
-    let forward = forwards
+    let config = CONFIG.read().unwrap();
+    let forward = config
+        .forwards
         .iter()
         .find(|forward| forward.hostname == handshake.server_address);
 
