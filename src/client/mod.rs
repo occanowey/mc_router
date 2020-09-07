@@ -48,7 +48,15 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
 
     debug!("Forward found {} -> {}", forward.hostname, forward.target);
 
-    let mut server = TcpStream::connect(&forward.target)?;
+    let mut server = match TcpStream::connect(&forward.target) {
+        Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+            info!("Could not connect to server, closing client connection.");
+            return Ok(());
+        }
+
+        res => res,
+    }?;
+
     server.write_all(client.cache())?;
 
     let mut client_read = client.into_inner();
