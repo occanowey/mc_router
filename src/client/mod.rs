@@ -31,17 +31,20 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     let handshake = decode_handshake(&mut client)?;
     debug!("Handshake packet recieved: {:?}", handshake);
 
-    let config = CONFIG.read().unwrap();
-    let forward = config
-        .forwards
-        .iter()
-        .find(|forward| forward.hostname == handshake.server_address);
+    let forward = {
+        let config = CONFIG.read().unwrap();
+        let forward = config
+            .forwards
+            .iter()
+            .find(|forward| forward.hostname == handshake.server_address);
 
-    if forward.is_none() {
-        debug!("No forward found closing connection.");
-        return Ok(());
-    }
-    let forward = forward.unwrap();
+        if forward.is_none() {
+            debug!("No forward found closing connection.");
+            return Ok(());
+        }
+
+        forward.unwrap().clone()
+    };
 
     debug!("Forward found {} -> {}", forward.hostname, forward.target);
 

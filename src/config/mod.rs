@@ -14,7 +14,7 @@ pub struct Config {
     pub forwards: Vec<Forward>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Forward {
     pub hostname: String,
     pub target: String,
