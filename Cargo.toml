@@ -13,4 +13,4 @@ serde_yaml = "0.8"
 
 log = "0.4"
 chrono = "0.4"
-fern = { version = "0.6.0", default-features = false, features = ["colored"] }
+fern = {version = "0.6.0", default-features = false, features = ["colored"]}

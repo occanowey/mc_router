@@ -1,12 +1,12 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod cli;
 mod client;
 mod config;
 mod logger;
 mod read_types;
 mod util;
-mod cli;
 
 use client::spawn_client_handler;
 use config::Config;

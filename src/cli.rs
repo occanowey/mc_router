@@ -1,6 +1,9 @@
-use std::io;
+use crate::{
+    config::{self, Forward},
+    CONFIG,
+};
 use io::BufRead;
-use crate::{config::{self, Forward}, CONFIG};
+use std::io;
 
 pub fn start() {
     let stdin = io::stdin();
@@ -19,7 +22,7 @@ pub fn start() {
     }
 }
 
-fn execute_list<'i, A: Iterator<Item = &'i str>>(command: &str, args: &'i mut A) {
+fn execute_list<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
     let config = CONFIG.read().unwrap();
 
     println!("forwards:");
@@ -28,7 +31,7 @@ fn execute_list<'i, A: Iterator<Item = &'i str>>(command: &str, args: &'i mut A)
     }
 }
 
-fn execute_forward<'i, A: Iterator<Item = &'i str>>(command: &str, args: &'i mut A) {
+fn execute_forward<'i, A: Iterator<Item = &'i str>>(_command: &str, args: &'i mut A) {
     let hostname = args.next();
     let target = args.next();
 
@@ -48,8 +51,7 @@ fn execute_forward<'i, A: Iterator<Item = &'i str>>(command: &str, args: &'i mut
     }
 }
 
-
-fn execute_reload<'i, A: Iterator<Item = &'i str>>(command: &str, args: &'i mut A) {
+fn execute_reload<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
     *CONFIG.write().unwrap() = config::load().unwrap();
     println!("reloaded forwards");
 }
