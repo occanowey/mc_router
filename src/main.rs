@@ -37,7 +37,7 @@ fn main() {
 fn start_server(address: &str) {
     thread::sleep(Duration::from_millis(250));
 
-    info!("Starting server on {}", address);
+    info!("Starting router rev:{} on {}", git_version::git_version!(), address);
     let listener = TcpListener::bind(address).unwrap();
 
     for stream in listener.incoming() {
