@@ -71,6 +71,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostname-validator"
+version = "1.0.0"
+source = "git+https://github.com/occanowey/hostname-validator#ab0cacf3e755d50236c6cca214a465cb6538173a"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -103,6 +108,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "fern",
+ "hostname-validator",
  "lazy_static",
  "log",
  "serde",

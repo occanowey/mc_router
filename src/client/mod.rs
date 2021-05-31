@@ -36,7 +36,7 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
         let forward = config
             .forwards
             .iter()
-            .find(|forward| forward.hostname == handshake.server_address);
+            .find(|forward| forward.hostname == &handshake.server_address);
 
         if forward.is_none() {
             debug!("No forward found closing connection.");
@@ -57,6 +57,7 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
         res => res,
     }?;
 
+    // TODO: add config option to re write handshake to include target hostname/port
     server.write_all(client.cache())?;
 
     let mut client_read = client.into_inner();

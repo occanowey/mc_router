@@ -1,4 +1,9 @@
 mod error;
+mod hostname;
+mod serveraddr;
+
+pub use hostname::Hostname;
+pub use serveraddr::ServerAddr;
 
 use error::ConfigError;
 use serde::{Deserialize, Serialize};
@@ -16,8 +21,8 @@ pub struct Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Forward {
-    pub hostname: String,
-    pub target: String,
+    pub hostname: Hostname,
+    pub target: ServerAddr,
 }
 
 pub fn load() -> Result<Config, ConfigError> {

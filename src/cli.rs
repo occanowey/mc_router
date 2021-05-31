@@ -32,15 +32,25 @@ fn execute_list<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut 
 }
 
 fn execute_forward<'i, A: Iterator<Item = &'i str>>(_command: &str, args: &'i mut A) {
-    let hostname = args.next();
-    let target = args.next();
+    let hostname = args.next().map(|s| s.parse());
+    let target = args.next().map(|s| s.parse());
 
     if let (Some(hostname), Some(target)) = (hostname, target) {
+        if hostname.is_err() {
+            println!("hostname is invalid");
+            return;
+        }
+
+        if target.is_err() {
+            println!("target is invalid");
+            return;
+        }
+
         {
             let mut config = CONFIG.write().unwrap();
             (*config).forwards.push(Forward {
-                hostname: hostname.to_string(),
-                target: target.to_string(),
+                hostname: hostname.unwrap(),
+                target: target.unwrap(),
             });
         }
 
