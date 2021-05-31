@@ -28,7 +28,16 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
 
     let mut client = CachedReader::new(client);
 
-    let handshake = decode_handshake(&mut client)?;
+    let handshake = {
+        let handshake = decode_handshake(&mut client);
+
+        if let Err(ClientError::IO(_)) = &handshake {
+            debug!("Invalid handshake buffer: {:?}", client.cache());
+        }
+
+        handshake?
+    };
+
     debug!("Handshake packet recieved: {:?}", handshake);
 
     let forward = {
