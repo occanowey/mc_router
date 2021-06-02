@@ -4,12 +4,7 @@ use crate::{read_types::ReadMCTypesExt, util::CachedReader, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
 use log::{debug, error, info};
-use std::{
-    io,
-    net::TcpStream,
-    sync::{Arc, RwLock},
-    thread,
-};
+use std::{io, net::TcpStream, thread};
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
@@ -75,48 +70,18 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     let mut server_read = server;
     let mut server_write = server_read.try_clone()?;
 
-    let c2s_connected = Arc::new(RwLock::new(true));
-    let s2c_connected = c2s_connected.clone();
-
     // c -> s
     thread::Builder::new()
         .name(format!("client({}) c->s", client_address))
         .spawn(move || {
-            let mut buffer = vec![0; 128];
-            while *c2s_connected.read().unwrap() {
-                let length = client_read.read(&mut buffer).unwrap();
-
-                if length > 0 {
-                    server_write
-                        .write_all(buffer.get(0..length).unwrap())
-                        .unwrap();
-                } else {
-                    info!("Client({}) closed connection to router.", client_address);
-                    *c2s_connected.write().unwrap() = false;
-                }
-            }
+            io::copy(&mut client_read, &mut server_write).unwrap();
         })?;
 
     // s -> c
     thread::Builder::new()
         .name(format!("client({}) s->c", client_address))
         .spawn(move || {
-            let mut buffer = vec![0; 128];
-            while *s2c_connected.read().unwrap() {
-                let length = server_read.read(&mut buffer).unwrap();
-
-                if length > 0 {
-                    client_write
-                        .write_all(buffer.get(0..length).unwrap())
-                        .unwrap();
-                } else {
-                    info!(
-                        "Server(client: {}) closed connection to router.",
-                        client_address
-                    );
-                    *s2c_connected.write().unwrap() = false;
-                }
-            }
+            io::copy(&mut server_read, &mut client_write).unwrap();
         })?;
 
     Ok(())
