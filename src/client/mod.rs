@@ -4,7 +4,7 @@ use crate::{read_types::ReadMCTypesExt, util::CachedReader, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
 use log::{debug, error, info};
-use std::{io, net::TcpStream, thread};
+use std::{io, net::{Shutdown, TcpStream}, thread};
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
@@ -71,18 +71,31 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     let mut server_write = server_read.try_clone()?;
 
     // c -> s
-    thread::Builder::new()
+    let cs_thread = thread::Builder::new()
         .name(format!("client({}) c->s", client_address))
         .spawn(move || {
-            io::copy(&mut client_read, &mut server_write).unwrap();
+            // Ignore any errors we recieve
+            let _ = io::copy(&mut client_read, &mut server_write);
+
+            let _ = client_read.shutdown(Shutdown::Both);
+            let _ = server_write.shutdown(Shutdown::Both);
         })?;
 
     // s -> c
-    thread::Builder::new()
+    let sc_thread = thread::Builder::new()
         .name(format!("client({}) s->c", client_address))
         .spawn(move || {
-            io::copy(&mut server_read, &mut client_write).unwrap();
+            // Ignore any errors we recieve
+            let _ = io::copy(&mut server_read, &mut client_write);
+
+            let _ = server_read.shutdown(Shutdown::Both);
+            let _ = client_write.shutdown(Shutdown::Both);
         })?;
+
+    cs_thread.join().unwrap();
+    sc_thread.join().unwrap();
+
+    info!("Disconnecting client {}", client_address);
 
     Ok(())
 }
