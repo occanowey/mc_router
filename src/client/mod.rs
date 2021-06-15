@@ -38,16 +38,14 @@ struct Proxy {
     forward: Forward,
     next_state: NextState,
 }
-struct Closed;
 
 impl ClientState for Initialize {}
 impl ClientState for PostHandshake {}
 impl ClientState for Proxy {}
-impl ClientState for Closed {}
 
 enum ClientStatus<S: ClientState + ?Sized> {
     Open(Client<S>),
-    Closed(Client<Closed>),
+    Closed(String),
 }
 
 impl Client<Initialize> {
@@ -66,10 +64,7 @@ impl Client<Initialize> {
     fn close<S: ClientState>(self) -> Result<ClientStatus<S>, ClientError> {
         self.extra.stream.into_inner().shutdown(Shutdown::Both)?;
 
-        Ok(ClientStatus::Closed(Client {
-            address: self.address,
-            extra: Box::new(Closed),
-        }))
+        Ok(ClientStatus::Closed(self.address))
     }
 
     fn handshake(mut self) -> Result<ClientStatus<PostHandshake>, ClientError> {
