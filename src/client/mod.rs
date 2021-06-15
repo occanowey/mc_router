@@ -12,11 +12,11 @@ use std::{
 
 trait ClientState {}
 
-struct Client<S: ClientState + ?Sized> {
+struct Client<S: ClientState> {
     // stream: TcpStream,
     address: String,
 
-    extra: Box<S>,
+    extra: S,
 }
 
 struct Initialize {
@@ -43,7 +43,7 @@ impl ClientState for Initialize {}
 impl ClientState for PostHandshake {}
 impl ClientState for Proxy {}
 
-enum ClientStatus<S: ClientState + ?Sized> {
+enum ClientStatus<S: ClientState> {
     Open(Client<S>),
     Closed(String),
 }
@@ -57,7 +57,7 @@ impl Client<Initialize> {
             // stream,
             address,
 
-            extra: Box::new(Initialize { stream }),
+            extra: Initialize { stream },
         })
     }
 
@@ -100,11 +100,11 @@ impl Client<Initialize> {
                 trace!("found forward: {:?}", &forward);
                 Ok(ClientStatus::Open(Client {
                     address: self.address,
-                    extra: Box::new(PostHandshake {
+                    extra: PostHandshake {
                         stream: self.extra.stream,
                         handshake,
                         forward,
-                    }),
+                    },
                 }))
             }
 
@@ -141,11 +141,11 @@ impl Client<PostHandshake> {
 
         Ok(Client {
             address: self.address,
-            extra: Box::new(Proxy {
+            extra: Proxy {
                 stream: self.extra.stream,
                 forward: self.extra.forward,
                 next_state,
-            }),
+            },
         })
     }
 }
