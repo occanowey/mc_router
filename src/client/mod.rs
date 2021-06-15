@@ -3,7 +3,7 @@ mod error;
 use crate::{read_types::ReadMCTypesExt, util::CachedReader, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use std::{io, net::{Shutdown, TcpStream}, thread};
 
 pub fn spawn_client_handler(stream: TcpStream) {
@@ -19,21 +19,20 @@ pub fn spawn_client_handler(stream: TcpStream) {
 
 fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     let client_address = client.peer_addr()?;
-    info!("New connection from {}", client_address);
+    trace!("New connection from {}", client_address);
 
     let mut client = CachedReader::new(client);
 
-    let handshake = {
-        let handshake = decode_handshake(&mut client);
+    let handshake = match decode_handshake(&mut client) {
+        Err(ClientError::IO(ioerr)) if ioerr.kind() == io::ErrorKind::UnexpectedEof => {
+            return Ok(())
+        },
 
-        if let Err(ClientError::IO(_)) = &handshake {
-            debug!("Invalid handshake buffer: {:?}", client.cache());
-        }
+        handshake => handshake,
+    }?;
 
-        handshake?
-    };
-
-    debug!("Handshake packet recieved: {:?}", handshake);
+    info!("Client connected from {}", client_address);
+    trace!("Handshake packet recieved: {:?}", handshake);
 
     let forward = {
         let config = CONFIG.read().unwrap();
