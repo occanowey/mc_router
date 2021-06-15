@@ -64,33 +64,14 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     // TODO: add config option to re write handshake to include target hostname/port
     server.write_all(client.cache())?;
 
-    let mut client_read = client.into_inner();
-    let mut client_write = client_read.try_clone()?;
+    let client_read = client.into_inner();
+    let client_write = client_read.try_clone()?;
 
-    let mut server_read = server;
-    let mut server_write = server_read.try_clone()?;
+    let server_read = server;
+    let server_write = server_read.try_clone()?;
 
-    // c -> s
-    let cs_thread = thread::Builder::new()
-        .name(format!("client({}) c->s", client_address))
-        .spawn(move || {
-            // Ignore any errors we recieve
-            let _ = io::copy(&mut client_read, &mut server_write);
-
-            let _ = client_read.shutdown(Shutdown::Both);
-            let _ = server_write.shutdown(Shutdown::Both);
-        })?;
-
-    // s -> c
-    let sc_thread = thread::Builder::new()
-        .name(format!("client({}) s->c", client_address))
-        .spawn(move || {
-            // Ignore any errors we recieve
-            let _ = io::copy(&mut server_read, &mut client_write);
-
-            let _ = server_read.shutdown(Shutdown::Both);
-            let _ = client_write.shutdown(Shutdown::Both);
-        })?;
+    let cs_thread = spawn_copy_thread(format!("client({}) c->s", client_address), client_read, server_write)?;
+    let sc_thread = spawn_copy_thread(format!("client({}) s->c", client_address), server_read, client_write)?;
 
     cs_thread.join().unwrap();
     sc_thread.join().unwrap();
@@ -98,6 +79,16 @@ fn handle_client(client: TcpStream) -> Result<(), ClientError> {
     info!("Disconnecting client {}", client_address);
 
     Ok(())
+}
+
+fn spawn_copy_thread(name: String, mut from: TcpStream, mut to: TcpStream) -> Result<thread::JoinHandle<()>, io::Error> {
+    thread::Builder::new()
+        .name(name)
+        .spawn(move || {
+            // Ignore all errors we recieve
+            let _ = io::copy(&mut from, &mut to);
+            let _ = to.shutdown(Shutdown::Both);
+        })
 }
 
 #[derive(Debug)]
