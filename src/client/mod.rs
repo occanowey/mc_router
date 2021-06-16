@@ -1,6 +1,6 @@
 mod error;
 
-use crate::{config::Forward, mc_types::ReadMCTypesExt, util::CachedReader, CONFIG};
+use crate::{config::Forward, mc_types::ReadMCTypesExt, mc_types::WriteMCTypesExt, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
 use log::{error, info, trace};
@@ -13,7 +13,7 @@ use std::{
 trait ClientState {}
 
 struct Client<S: ClientState> {
-    stream: CachedReader<TcpStream>,
+    stream: TcpStream,
     address: String,
 
     extra: S,
@@ -31,6 +31,7 @@ enum NextState {
 }
 
 struct Proxy {
+    handshake: Handshake,
     forward: Forward,
     next_state: NextState,
 }
@@ -47,7 +48,6 @@ enum ClientStatus<S: ClientState> {
 impl Client<Initialize> {
     fn new(stream: TcpStream) -> Result<Client<Initialize>, ClientError> {
         let address = stream.peer_addr()?.to_string();
-        let stream = CachedReader::new(stream);
 
         Ok(Client {
             stream,
@@ -58,7 +58,7 @@ impl Client<Initialize> {
     }
 
     fn close<S: ClientState>(self) -> Result<ClientStatus<S>, ClientError> {
-        self.stream.into_inner().shutdown(Shutdown::Both)?;
+        self.stream.shutdown(Shutdown::Both)?;
 
         Ok(ClientStatus::Closed(self.address))
     }
@@ -97,10 +97,7 @@ impl Client<Initialize> {
                 Ok(ClientStatus::Open(Client {
                     stream: self.stream,
                     address: self.address,
-                    extra: PostHandshake {
-                        handshake,
-                        forward,
-                    },
+                    extra: PostHandshake { handshake, forward },
                 }))
             }
 
@@ -139,6 +136,7 @@ impl Client<PostHandshake> {
             stream: self.stream,
             address: self.address,
             extra: Proxy {
+                handshake: self.extra.handshake,
                 forward: self.extra.forward,
                 next_state,
             },
@@ -172,9 +170,19 @@ impl Client<Proxy> {
         }?;
 
         // TODO: add config option to re write handshake to include target hostname/port
-        server.write_all(self.stream.cache())?;
+        // server.write_all(self.stream.cache())?;
+        encode_handshake(&mut server, &self.extra.handshake)?;
 
-        let client_read = self.stream.into_inner();
+        if let Login { ref username } = state {
+            let mut buffer = Vec::new();
+            buffer.write_varint(0)?;
+            buffer.write_string(username)?;
+
+            server.write_varint(buffer.len() as i32)?;
+            server.write_all(&buffer)?;
+        }
+
+        let client_read = self.stream;
         let client_write = client_read.try_clone()?;
 
         let server_read = server;
@@ -244,6 +252,26 @@ struct Handshake {
     next_state: i32,
 
     fml: bool,
+}
+
+fn encode_handshake<W: Write>(writer: &mut W, handshake: &Handshake) -> Result<(), ClientError> {
+    let server_address = format!(
+        "{}{}",
+        &handshake.server_address,
+        if handshake.fml { "\0FML\0" } else { "" }
+    );
+
+    let mut buffer = Vec::<u8>::new();
+
+    buffer.write_varint(0)?; // Packet ID
+
+    buffer.write_varint(handshake.protocol_version)?;
+    buffer.write_string(server_address)?;
+    buffer.write_ushort(handshake.server_port)?;
+    buffer.write_varint(handshake.next_state)?;
+
+    writer.write_varint(buffer.len() as i32)?;
+    Ok(writer.write_all(&buffer)?)
 }
 
 fn decode_handshake<R: Read>(reader: &mut R) -> Result<Handshake, ClientError> {

@@ -6,7 +6,6 @@ mod client;
 mod config;
 mod logger;
 mod mc_types;
-mod util;
 
 use client::spawn_client_handler;
 use config::Config;
