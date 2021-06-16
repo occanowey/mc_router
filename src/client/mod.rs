@@ -1,6 +1,6 @@
 mod error;
 
-use crate::{config::Forward, read_types::ReadMCTypesExt, util::CachedReader, CONFIG};
+use crate::{config::Forward, mc_types::ReadMCTypesExt, util::CachedReader, CONFIG};
 use error::ClientError;
 use io::{Read, Write};
 use log::{error, info, trace};

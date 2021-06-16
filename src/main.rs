@@ -5,7 +5,7 @@ mod cli;
 mod client;
 mod config;
 mod logger;
-mod read_types;
+mod mc_types;
 mod util;
 
 use client::spawn_client_handler;
