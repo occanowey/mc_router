@@ -13,17 +13,14 @@ use std::{
 trait ClientState {}
 
 struct Client<S: ClientState> {
-    // stream: TcpStream,
+    stream: CachedReader<TcpStream>,
     address: String,
 
     extra: S,
 }
 
-struct Initialize {
-    stream: CachedReader<TcpStream>,
-}
+struct Initialize;
 struct PostHandshake {
-    stream: CachedReader<TcpStream>,
     handshake: Handshake,
     forward: Forward,
 }
@@ -34,7 +31,6 @@ enum NextState {
 }
 
 struct Proxy {
-    stream: CachedReader<TcpStream>,
     forward: Forward,
     next_state: NextState,
 }
@@ -54,22 +50,22 @@ impl Client<Initialize> {
         let stream = CachedReader::new(stream);
 
         Ok(Client {
-            // stream,
+            stream,
             address,
 
-            extra: Initialize { stream },
+            extra: Initialize,
         })
     }
 
     fn close<S: ClientState>(self) -> Result<ClientStatus<S>, ClientError> {
-        self.extra.stream.into_inner().shutdown(Shutdown::Both)?;
+        self.stream.into_inner().shutdown(Shutdown::Both)?;
 
         Ok(ClientStatus::Closed(self.address))
     }
 
     fn handshake(mut self) -> Result<ClientStatus<PostHandshake>, ClientError> {
         trace!("reading handshake from {}", self.address);
-        let handshake = match decode_handshake(&mut self.extra.stream) {
+        let handshake = match decode_handshake(&mut self.stream) {
             Err(ClientError::IO(ioerr)) if ioerr.kind() == io::ErrorKind::UnexpectedEof => {
                 trace!("client didn't send any data, closing");
                 return self.close();
@@ -99,9 +95,9 @@ impl Client<Initialize> {
             Some(forward) => {
                 trace!("found forward: {:?}", &forward);
                 Ok(ClientStatus::Open(Client {
+                    stream: self.stream,
                     address: self.address,
                     extra: PostHandshake {
-                        stream: self.extra.stream,
                         handshake,
                         forward,
                     },
@@ -124,14 +120,14 @@ impl Client<PostHandshake> {
         let next_state = match self.extra.handshake.next_state {
             1 => NextState::Status,
             2 => {
-                let _length = self.extra.stream.read_varint()?;
+                let _length = self.stream.read_varint()?;
 
-                let (id, _) = self.extra.stream.read_varint()?;
+                let (id, _) = self.stream.read_varint()?;
                 if id != 0 {
                     return Err(ClientError::InvalidHandshake("invalid packet id"));
                 }
 
-                let (username, _) = self.extra.stream.read_string()?;
+                let (username, _) = self.stream.read_string()?;
 
                 NextState::Login { username }
             }
@@ -140,9 +136,9 @@ impl Client<PostHandshake> {
         };
 
         Ok(Client {
+            stream: self.stream,
             address: self.address,
             extra: Proxy {
-                stream: self.extra.stream,
                 forward: self.extra.forward,
                 next_state,
             },
@@ -176,9 +172,9 @@ impl Client<Proxy> {
         }?;
 
         // TODO: add config option to re write handshake to include target hostname/port
-        server.write_all(self.extra.stream.cache())?;
+        server.write_all(self.stream.cache())?;
 
-        let client_read = self.extra.stream.into_inner();
+        let client_read = self.stream.into_inner();
         let client_write = client_read.try_clone()?;
 
         let server_read = server;
