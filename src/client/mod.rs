@@ -1,8 +1,11 @@
 mod error;
 
-use crate::{config::Forward, mc_types::ReadMCTypesExt, mc_types::WriteMCTypesExt, CONFIG};
+use crate::{
+    config::Forward,
+    minecraft::{packet::Handshake, PacketBuilder, ReadExt},
+    CONFIG,
+};
 use error::ClientError;
-use io::{Read, Write};
 use log::{error, info, trace};
 use std::{
     io,
@@ -65,8 +68,8 @@ impl Client<Initialize> {
 
     fn handshake(mut self) -> Result<ClientStatus<PostHandshake>, ClientError> {
         trace!("reading handshake from {}", self.address);
-        let handshake = match decode_handshake(&mut self.stream) {
-            Err(ClientError::IO(ioerr)) if ioerr.kind() == io::ErrorKind::UnexpectedEof => {
+        let handshake = match Handshake::read(&mut self.stream) {
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
                 trace!("client didn't send any data, closing");
                 return self.close();
             }
@@ -170,16 +173,12 @@ impl Client<Proxy> {
         }?;
 
         // TODO: add config option to re write handshake to include target hostname/port
-        // server.write_all(self.stream.cache())?;
-        encode_handshake(&mut server, &self.extra.handshake)?;
+        self.extra.handshake.write(&mut server)?;
 
         if let Login { ref username } = state {
-            let mut buffer = Vec::new();
-            buffer.write_varint(0)?;
-            buffer.write_string(username)?;
-
-            server.write_varint(buffer.len() as i32)?;
-            server.write_all(&buffer)?;
+            let mut packet = PacketBuilder::new(0)?;
+            packet.write_string(username)?;
+            packet.write(&mut server)?;
         }
 
         let client_read = self.stream;
@@ -241,62 +240,5 @@ fn spawn_copy_thread(
         // Ignore all errors we recieve
         let _ = io::copy(&mut from, &mut to);
         let _ = to.shutdown(Shutdown::Both);
-    })
-}
-
-#[derive(Debug)]
-struct Handshake {
-    protocol_version: i32,
-    server_address: String,
-    server_port: u16,
-    next_state: i32,
-
-    fml: bool,
-}
-
-fn encode_handshake<W: Write>(writer: &mut W, handshake: &Handshake) -> Result<(), ClientError> {
-    let server_address = format!(
-        "{}{}",
-        &handshake.server_address,
-        if handshake.fml { "\0FML\0" } else { "" }
-    );
-
-    let mut buffer = Vec::<u8>::new();
-
-    buffer.write_varint(0)?; // Packet ID
-
-    buffer.write_varint(handshake.protocol_version)?;
-    buffer.write_string(server_address)?;
-    buffer.write_ushort(handshake.server_port)?;
-    buffer.write_varint(handshake.next_state)?;
-
-    writer.write_varint(buffer.len() as i32)?;
-    Ok(writer.write_all(&buffer)?)
-}
-
-fn decode_handshake<R: Read>(reader: &mut R) -> Result<Handshake, ClientError> {
-    // todo: maybe handle legacy ping?
-
-    let _length = reader.read_varint()?;
-
-    let (id, _) = reader.read_varint()?;
-    if id != 0 {
-        return Err(ClientError::InvalidHandshake("invalid packet id"));
-    }
-
-    let (protocol_version, _) = reader.read_varint()?;
-    let (server_address, _) = reader.read_string()?;
-    let server_port = reader.read_ushort()?;
-    let (next_state, _) = reader.read_varint()?;
-
-    let fml = server_address.ends_with("\0FML\0");
-    let server_address = server_address.replace("\0FML\0", "");
-
-    Ok(Handshake {
-        protocol_version,
-        server_address,
-        server_port,
-        next_state,
-        fml,
     })
 }
