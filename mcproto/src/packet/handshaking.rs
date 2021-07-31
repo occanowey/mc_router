@@ -1,5 +1,5 @@
 use super::PacketBuilder;
-use crate::minecraft::ReadExt;
+use crate::ReadExt;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 
 #[derive(Debug)]

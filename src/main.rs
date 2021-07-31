@@ -5,7 +5,6 @@ mod cli;
 mod client;
 mod config;
 mod logger;
-mod minecraft;
 
 use client::spawn_client_handler;
 use config::Config;

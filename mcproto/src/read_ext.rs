@@ -1,6 +1,6 @@
 use std::io::{Read, Result};
 
-macro_rules! read_named_primitive {
+macro_rules! named_primitive_read {
     ($name:tt, $length:expr, $primitive:ty) => {
         #[inline]
         fn $name(&mut self) -> Result<$primitive> {
@@ -24,28 +24,28 @@ pub trait MinecraftReadExt: Read {
     }
 
     // Byte
-    read_named_primitive!(read_byte, 1, i8);
+    named_primitive_read!(read_byte, 1, i8);
 
     // Unsigned Byte
-    read_named_primitive!(read_ubyte, 1, u8);
+    named_primitive_read!(read_ubyte, 1, u8);
 
     // Short
-    read_named_primitive!(read_short, 2, i16);
+    named_primitive_read!(read_short, 2, i16);
 
     // Unsigned Short
-    read_named_primitive!(read_ushort, 2, u16);
+    named_primitive_read!(read_ushort, 2, u16);
 
     // Int
-    read_named_primitive!(read_int, 4, i32);
+    named_primitive_read!(read_int, 4, i32);
 
     // Long
-    read_named_primitive!(read_long, 8, i64);
+    named_primitive_read!(read_long, 8, i64);
 
     // Float
-    read_named_primitive!(read_float, 4, f32);
+    named_primitive_read!(read_float, 4, f32);
 
     // Double
-    read_named_primitive!(read_double, 8, f64);
+    named_primitive_read!(read_double, 8, f64);
 
     // String
     #[inline]

@@ -1,4 +1,4 @@
-use crate::minecraft::WriteExt;
+use crate::WriteExt;
 use std::io::{Result, Write};
 
 macro_rules! builder_write_type {

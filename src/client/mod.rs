@@ -1,12 +1,9 @@
 mod error;
 
-use crate::{
-    config::Forward,
-    minecraft::{packet::Handshake, PacketBuilder, ReadExt},
-    CONFIG,
-};
+use crate::{config::Forward, CONFIG};
 use error::ClientError;
 use log::{error, info, trace};
+use mcproto::{packet::Handshake, PacketBuilder, ReadExt};
 use std::{
     io,
     net::{Shutdown, TcpStream},

@@ -1,7 +1,7 @@
 mod builder;
 
-mod handshake;
+mod handshaking;
 
 pub use builder::PacketBuilder;
 
-pub use handshake::Handshake;
+pub use handshaking::Handshake;

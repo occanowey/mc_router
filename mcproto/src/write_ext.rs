@@ -1,6 +1,6 @@
 use std::io::{Result, Write};
 
-macro_rules! write_named_primitive {
+macro_rules! named_primitive_write {
     ($name:tt, $length:expr, $primitive:ty) => {
         #[inline]
         fn $name(&mut self, value: $primitive) -> Result<()> {
@@ -22,28 +22,28 @@ pub trait MinecraftWriteExt: Write {
     }
 
     // Byte
-    write_named_primitive!(write_byte, 1, i8);
+    named_primitive_write!(write_byte, 1, i8);
 
     // Unsigned Byte
-    write_named_primitive!(write_ubyte, 1, u8);
+    named_primitive_write!(write_ubyte, 1, u8);
 
     // Short
-    write_named_primitive!(write_short, 2, i16);
+    named_primitive_write!(write_short, 2, i16);
 
     // Unsigned Short
-    write_named_primitive!(write_ushort, 2, u16);
+    named_primitive_write!(write_ushort, 2, u16);
 
     // Int
-    write_named_primitive!(write_int, 4, i32);
+    named_primitive_write!(write_int, 4, i32);
 
     // Long
-    write_named_primitive!(write_long, 8, i64);
+    named_primitive_write!(write_long, 8, i64);
 
     // Float
-    write_named_primitive!(write_float, 4, f32);
+    named_primitive_write!(write_float, 4, f32);
 
     // Double
-    write_named_primitive!(write_double, 8, f64);
+    named_primitive_write!(write_double, 8, f64);
 
     // String
     #[inline]
