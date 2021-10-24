@@ -16,7 +16,16 @@ static CONFIG_PATH: &str = "config.yml";
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
+    default_forward: Option<Hostname>,
     pub forwards: Vec<Forward>,
+}
+
+impl Config {
+    pub fn get_default_forward(&self) -> Option<&Forward> {
+        self.default_forward
+            .as_ref()
+            .and_then(|d| self.forwards.iter().find(|f| f.hostname == &d.0))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

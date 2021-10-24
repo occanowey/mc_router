@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, net::Ipv4Addr, str::FromStr};
 
 #[derive(Debug, Clone)]
-pub struct Hostname(String);
+pub struct Hostname(pub String);
 
 impl fmt::Display for Hostname {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

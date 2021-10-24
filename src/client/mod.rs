@@ -88,6 +88,7 @@ impl Client<Initialize> {
                 .forwards
                 .iter()
                 .find(|f| f.hostname == &handshake.server_address)
+                .or_else(|| config.get_default_forward())
                 .map(|f| f.clone())
         };
 
