@@ -1,6 +1,7 @@
 mod builder;
 
 mod handshaking;
+mod status;
 mod login;
 
 use std::io::{Read, Write, Result};
@@ -8,6 +9,7 @@ use std::io::{Read, Write, Result};
 pub use builder::PacketBuilder;
 
 pub use handshaking::Handshake;
+pub use status::{Request, Response, Ping, Pong};
 pub use login::LoginStart;
 
 pub trait Packet {

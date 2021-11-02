@@ -1,19 +1,20 @@
 // This whole thing probably belongs in mcproto but I want to flesh it out first
 
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 
-use mcproto::packet::{Handshake, LoginStart};
-use super::error::ClientError;
 use self::sealed::*;
+use super::error::ClientError;
+use mcproto::packet::{Handshake, LoginStart, Ping, Pong, Request, Response};
 
 mod sealed {
-    use mcproto::packet::PacketRead;
+    use mcproto::packet::{PacketRead, PacketWrite};
 
     // Not really sure this is strictly network related,
     // but it's all I'm using for so it stays here.
     pub trait NetworkState {}
 
     pub trait StateReadPacket<NetworkState>: PacketRead {}
+    pub trait StateWritePacket<NetworkState>: PacketWrite {}
 }
 
 // would rather this be in network handler but generics makes that difficult if not impossible
@@ -41,6 +42,14 @@ pub struct NetworkHandler<S: NetworkState> {
 impl<S: NetworkState> NetworkHandler<S> {
     pub fn read<P: StateReadPacket<S>>(&mut self) -> Result<P, ClientError> {
         Ok(P::read(&mut self.stream)?)
+    }
+
+    pub fn write<P: StateWritePacket<S>>(&mut self, packet: P) -> Result<(), ClientError> {
+        Ok(packet.write(&mut self.stream)?)
+    }
+
+    pub fn close(self) -> Result<(), ClientError> {
+        Ok(self.stream.shutdown(Shutdown::Both)?)
     }
 }
 
@@ -75,6 +84,11 @@ impl NetworkHandler<Handshaking> {
 //
 pub struct Status;
 impl NetworkState for Status {}
+
+impl StateReadPacket<Status> for Request {}
+impl StateWritePacket<Status> for Response {}
+impl StateReadPacket<Status> for Ping {}
+impl StateWritePacket<Status> for Pong {}
 
 //
 // Login State
