@@ -1,4 +1,4 @@
-use super::PacketBuilder;
+use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 
@@ -13,9 +13,21 @@ pub struct Handshake {
 }
 
 impl Handshake {
-    pub const PACKET_ID: i32 = 0;
+    fn get_fml_address(&self) -> String {
+        format!(
+            "{}{}",
+            self.server_address,
+            if self.fml { "\0FML\0" } else { "" }
+        )
+    }
+}
 
-    pub fn read<R: Read>(reader: &mut R) -> Result<Handshake> {
+impl Packet for Handshake {
+    const PACKET_ID: i32 = 0;
+}
+
+impl PacketRead for Handshake {
+    fn read<R: Read>(reader: &mut R) -> Result<Handshake> {
         // todo: maybe handle legacy ping?
         let _length = reader.read_varint()?;
 
@@ -40,16 +52,10 @@ impl Handshake {
             fml,
         })
     }
+}
 
-    fn get_fml_address(&self) -> String {
-        format!(
-            "{}{}",
-            self.server_address,
-            if self.fml { "\0FML\0" } else { "" }
-        )
-    }
-
-    pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
+impl PacketWrite for Handshake {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
         let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
         packet.write_varint(self.protocol_version)?;
         packet.write_string(self.get_fml_address())?;

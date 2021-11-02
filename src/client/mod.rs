@@ -3,7 +3,7 @@ mod error;
 use crate::{config::Forward, CONFIG};
 use error::ClientError;
 use log::{error, info, trace};
-use mcproto::{packet::Handshake, PacketBuilder, ReadExt};
+use mcproto::packet::{PacketRead, PacketWrite, Handshake, LoginStart};
 use std::{
     io,
     net::{Shutdown, TcpStream},
@@ -118,15 +118,7 @@ impl Client<PostHandshake> {
         let next_state = match self.extra.handshake.next_state {
             1 => NextState::Status,
             2 => {
-                let _length = self.stream.read_varint()?;
-
-                let (id, _) = self.stream.read_varint()?;
-                if id != 0 {
-                    return Err(ClientError::InvalidHandshake("invalid packet id"));
-                }
-
-                let (username, _) = self.stream.read_string()?;
-
+                let LoginStart { username } = LoginStart::read(&mut self.stream)?;
                 NextState::Login { username }
             }
 
@@ -174,9 +166,7 @@ impl Client<Proxy> {
         self.extra.handshake.write(&mut server)?;
 
         if let Login { ref username } = state {
-            let mut packet = PacketBuilder::new(0)?;
-            packet.write_string(username)?;
-            packet.write(&mut server)?;
+            LoginStart { username: username.to_owned() }.write(&mut server)?;
         }
 
         let client_read = self.stream;

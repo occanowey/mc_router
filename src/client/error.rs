@@ -2,7 +2,6 @@ use std::{error::Error, fmt, io};
 
 #[derive(Debug)]
 pub enum ClientError {
-    InvalidHandshake(&'static str),
     IO(io::Error),
 }
 
@@ -11,7 +10,6 @@ impl fmt::Display for ClientError {
         write!(f, "ClientError - ")?;
 
         match self {
-            ClientError::InvalidHandshake(reason) => write!(f, "Invalid Handshake: {}", reason),
             ClientError::IO(io_err) => write!(f, "IO: {:?}", io_err),
         }
     }
@@ -20,7 +18,6 @@ impl fmt::Display for ClientError {
 impl Error for ClientError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ClientError::InvalidHandshake(_) => None,
             ClientError::IO(io_err) => Some(io_err),
         }
     }
