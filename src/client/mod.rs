@@ -1,205 +1,17 @@
-mod error;
-
-use crate::{config::Forward, CONFIG};
-use error::ClientError;
-use log::{error, info, trace};
-use mcproto::packet::{PacketRead, PacketWrite, Handshake, LoginStart};
 use std::{
-    io,
+    io::{self, ErrorKind},
     net::{Shutdown, TcpStream},
     thread,
 };
 
-trait ClientState {}
+use log::{error, info, trace};
 
-struct Client<S: ClientState> {
-    stream: TcpStream,
-    address: String,
+mod error;
+mod net;
 
-    extra: S,
-}
-
-struct Initialize;
-struct PostHandshake {
-    handshake: Handshake,
-    forward: Forward,
-}
-
-enum NextState {
-    Status,
-    Login { username: String },
-}
-
-struct Proxy {
-    handshake: Handshake,
-    forward: Forward,
-    next_state: NextState,
-}
-
-impl ClientState for Initialize {}
-impl ClientState for PostHandshake {}
-impl ClientState for Proxy {}
-
-enum ClientStatus<S: ClientState> {
-    Open(Client<S>),
-    Closed(String),
-}
-
-impl Client<Initialize> {
-    fn new(stream: TcpStream) -> Result<Client<Initialize>, ClientError> {
-        let address = stream.peer_addr()?.to_string();
-
-        Ok(Client {
-            stream,
-            address,
-
-            extra: Initialize,
-        })
-    }
-
-    fn close<S: ClientState>(self) -> Result<ClientStatus<S>, ClientError> {
-        self.stream.shutdown(Shutdown::Both)?;
-
-        Ok(ClientStatus::Closed(self.address))
-    }
-
-    fn handshake(mut self) -> Result<ClientStatus<PostHandshake>, ClientError> {
-        trace!("reading handshake from {}", self.address);
-        let handshake = match Handshake::read(&mut self.stream) {
-            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
-                trace!("client didn't send any data, closing");
-                return self.close();
-            }
-
-            handshake => handshake,
-        }?;
-        trace!("read handshake: {:?}", handshake);
-
-        info!("New connection from {}", self.address);
-
-        trace!(
-            "finding forward for hostname: {:?}",
-            handshake.server_address
-        );
-        let forward = {
-            let config = CONFIG.read().unwrap();
-
-            config
-                .forwards
-                .iter()
-                .find(|f| f.hostname == &handshake.server_address)
-                .or_else(|| config.get_default_forward())
-                .map(|f| f.clone())
-        };
-
-        match forward {
-            Some(forward) => {
-                trace!("found forward: {:?}", &forward);
-                Ok(ClientStatus::Open(Client {
-                    stream: self.stream,
-                    address: self.address,
-                    extra: PostHandshake { handshake, forward },
-                }))
-            }
-
-            None => {
-                info!(
-                    "Could not find forward for {:?} requested by {}",
-                    handshake.server_address, self.address
-                );
-                self.close()
-            }
-        }
-    }
-}
-
-impl Client<PostHandshake> {
-    fn prepare_proxy(mut self) -> Result<Client<Proxy>, ClientError> {
-        let next_state = match self.extra.handshake.next_state {
-            1 => NextState::Status,
-            2 => {
-                let LoginStart { username } = LoginStart::read(&mut self.stream)?;
-                NextState::Login { username }
-            }
-
-            _ => unreachable!("next state should be 1 or 2"),
-        };
-
-        Ok(Client {
-            stream: self.stream,
-            address: self.address,
-            extra: Proxy {
-                handshake: self.extra.handshake,
-                forward: self.extra.forward,
-                next_state,
-            },
-        })
-    }
-}
-
-impl Client<Proxy> {
-    fn proxy(self) -> Result<(), ClientError> {
-        use NextState::*;
-
-        let forward = self.extra.forward;
-        let state = self.extra.next_state;
-
-        match state {
-            Status => info!("Forwarding status: {} -> {}", self.address, forward.target),
-            Login { ref username } => info!(
-                "Forwarding login: {} ({}) -> {}",
-                self.address, username, forward.target
-            ),
-        }
-
-        trace!("connecting to {:?}", forward.target);
-        let mut server = match TcpStream::connect(&forward.target) {
-            Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-                info!("Could not connect to server, closing client connection.");
-                return Ok(());
-            }
-
-            res => res,
-        }?;
-
-        // TODO: add config option to re write handshake to include target hostname/port
-        self.extra.handshake.write(&mut server)?;
-
-        if let Login { ref username } = state {
-            LoginStart { username: username.to_owned() }.write(&mut server)?;
-        }
-
-        let client_read = self.stream;
-        let client_write = client_read.try_clone()?;
-
-        let server_read = server;
-        let server_write = server_read.try_clone()?;
-
-        let cs_thread = spawn_copy_thread(
-            format!("client({}) c->s", self.address),
-            client_read,
-            server_write,
-        )?;
-        let sc_thread = spawn_copy_thread(
-            format!("client({}) s->c", self.address),
-            server_read,
-            client_write,
-        )?;
-
-        cs_thread.join().unwrap();
-        sc_thread.join().unwrap();
-
-        info!(
-            "Disconnecting {}",
-            match state {
-                Login { ref username } => format!("{} ({})", self.address, username),
-                Status => self.address,
-            }
-        );
-
-        Ok(())
-    }
-}
+use crate::{config::Forward, CONFIG};
+use error::ClientError;
+use mcproto::packet::{Handshake, LoginStart, PacketWrite};
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
@@ -213,10 +25,131 @@ pub fn spawn_client_handler(stream: TcpStream) {
 }
 
 fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
-    match Client::new(stream)?.handshake()? {
-        ClientStatus::Open(client) => client.prepare_proxy()?.proxy(),
-        ClientStatus::Closed(_) => Ok(()),
+    let mut client = net::handler_from_stream(stream);
+
+    trace!("reading handshake from {}", &client.address);
+    let handshake = match client.read::<Handshake>() {
+        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => {
+            trace!("client didn't send any data, closing");
+            return Ok(());
+        }
+
+        handshake => handshake,
+    }?;
+    trace!("read handshake: {:?}", handshake);
+
+    info!("New connection from {}", client.address);
+
+    trace!(
+        "finding forward for hostname: {:?}",
+        handshake.server_address
+    );
+    let forward = match find_forward(&handshake.server_address) {
+        Some(forward) => forward,
+        None => {
+            info!(
+                "Could not find forward for {:?} requested by {}",
+                handshake.server_address, client.address
+            );
+
+            client.stream.shutdown(Shutdown::Both)?;
+            return Ok(());
+        }
+    };
+    trace!("found forward: {:?}", &forward);
+
+    match handshake.next_state {
+        1 => {
+            let client = client.status();
+            info!(
+                "Forwarding status: {} -> {}",
+                client.address, forward.target
+            );
+
+            let mut server = connect_to_server(&forward)?;
+
+            // TODO: add config option to re write handshake to include target hostname/port
+            handshake.write(&mut server)?;
+            blocking_proxy(&client.address, client.stream, server)?;
+
+            info!("Disconnected {}", client.address);
+        }
+        2 => {
+            let mut client = client.login();
+            let login_start = client.read::<LoginStart>()?;
+
+            info!(
+                "Forwarding login: {} ({}) -> {}",
+                client.address, login_start.username, forward.target
+            );
+
+            let mut server = connect_to_server(&forward)?;
+
+            // TODO: add config option to re write handshake to include target hostname/port
+            handshake.write(&mut server)?;
+            login_start.write(&mut server)?;
+            blocking_proxy(&client.address, client.stream, server)?;
+
+            info!("Disconnected {} ({})", client.address, login_start.username);
+        }
+
+        other => unreachable!("next state should be 1 or 2, got {}", other),
     }
+
+    Ok(())
+}
+
+fn find_forward(hostname: &str) -> Option<Forward> {
+    let config = CONFIG.read().unwrap();
+
+    config
+        .forwards
+        .iter()
+        .find(|f| f.hostname == hostname)
+        .or_else(|| config.get_default_forward())
+        .cloned()
+}
+
+fn connect_to_server(forward: &Forward) -> Result<TcpStream, ClientError> {
+    trace!("connecting to {:?}", forward.target);
+    Ok(match TcpStream::connect(&forward.target) {
+        // don't really remember why this was a thing
+
+        // Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+        //     info!("Could not connect to server, closing client connection.");
+        //     return Ok(());
+        // }
+
+        res => res,
+    }?)
+}
+
+fn blocking_proxy(
+    client_address: &str,
+    client_stream: TcpStream,
+    server: TcpStream,
+) -> Result<(), ClientError> {
+    let client_read = client_stream;
+    let client_write = client_read.try_clone()?;
+
+    let server_read = server;
+    let server_write = server_read.try_clone()?;
+
+    let cs_thread = spawn_copy_thread(
+        format!("client({}) c->s", client_address),
+        client_read,
+        server_write,
+    )?;
+    let sc_thread = spawn_copy_thread(
+        format!("client({}) s->c", client_address),
+        server_read,
+        client_write,
+    )?;
+
+    cs_thread.join().unwrap();
+    sc_thread.join().unwrap();
+
+    Ok(())
 }
 
 fn spawn_copy_thread(
