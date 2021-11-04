@@ -8,7 +8,7 @@ use std::io::{Read, Write, Result};
 
 pub use builder::PacketBuilder;
 
-pub use handshaking::Handshake;
+pub use handshaking::{ForgeHandshake, Handshake};
 pub use status::{Request, Response, Ping, Pong};
 pub use login::LoginStart;
 

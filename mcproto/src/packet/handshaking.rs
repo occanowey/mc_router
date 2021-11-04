@@ -1,14 +1,12 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
 use std::io::{Error, ErrorKind, Read, Result, Write};
+use packet_derive::Packet;
 
 // i hate it here
 // https://wiki.vg/Minecraft_Forge_Handshake
 #[derive(Debug)]
 pub enum ForgeHandshake {
-    // maybe remove this and wrap with option?
-    None,
-
     // forge 1.7 - 1.12
     Version1,
 
@@ -17,18 +15,18 @@ pub enum ForgeHandshake {
 }
 
 impl ForgeHandshake {
-    fn separate_address(address: String) -> (String, Self) {
+    fn separate_address(address: String) -> (String, Option<Self>) {
         if !address.contains("\0") {
-            (address, Self::None)
+            (address, None)
         } else {
             let (address, fml) = address.split_once("\0").unwrap();
 
             let forge = match fml {
-                "FML\0" => Self::Version1,
-                "FML2\0" => Self::Version2,
+                "FML\0" => Some(Self::Version1),
+                "FML2\0" => Some(Self::Version2),
 
                 // should definately warn about this somehow
-                _ => Self::None,
+                _ => None,
             };
 
             (address.to_owned(), forge)
@@ -37,21 +35,21 @@ impl ForgeHandshake {
 
     fn net_id(&self) -> &str {
         match self {
-            Self::None => "",
             Self::Version1 => "\0FML\0",
             Self::Version2 => "\0FML2\0",
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Packet)]
+#[id(0)]
 pub struct Handshake {
     pub protocol_version: i32,
     pub server_address: String,
     pub server_port: u16,
     pub next_state: i32,
 
-    pub forge: ForgeHandshake,
+    pub forge: Option<ForgeHandshake>,
 }
 
 impl Handshake {
@@ -59,13 +57,9 @@ impl Handshake {
         format!(
             "{}{}",
             self.server_address,
-            self.forge.net_id(),
+            self.forge.as_ref().map_or("", |f| f.net_id()),
         )
     }
-}
-
-impl Packet for Handshake {
-    const PACKET_ID: i32 = 0;
 }
 
 impl PacketRead for Handshake {

@@ -1,14 +1,12 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
 use std::io::{Error, ErrorKind, Read, Result, Write};
+use packet_derive::Packet;
 
-#[derive(Debug)]
+#[derive(Debug, Packet)]
+#[id(0)]
 pub struct LoginStart {
     pub username: String,
-}
-
-impl Packet for LoginStart {
-    const PACKET_ID: i32 = 0;
 }
 
 impl PacketRead for LoginStart {
