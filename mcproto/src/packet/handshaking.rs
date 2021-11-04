@@ -1,6 +1,6 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{Read, Result, Write};
 use packet_derive::Packet;
 
 // i hate it here
@@ -63,15 +63,8 @@ impl Handshake {
 }
 
 impl PacketRead for Handshake {
-    fn read<R: Read>(reader: &mut R) -> Result<Handshake> {
+    fn read_data<R: Read>(reader: &mut R) -> Result<Handshake> {
         // todo: maybe handle legacy ping?
-        let _length = reader.read_varint()?;
-
-        let (id, _) = reader.read_varint()?;
-        if id != Self::PACKET_ID {
-            return Err(Error::new(ErrorKind::Other, "Invalid packet id"));
-        }
-
         let (protocol_version, _) = reader.read_varint()?;
         let (server_address, _) = reader.read_string()?;
         let server_port = reader.read_ushort()?;

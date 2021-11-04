@@ -4,7 +4,9 @@ mod handshaking;
 mod status;
 mod login;
 
-use std::io::{Read, Write, Result};
+use std::io::{Read, Write, Result, Error, ErrorKind};
+
+use crate::ReadExt;
 
 pub use builder::PacketBuilder;
 
@@ -17,7 +19,19 @@ pub trait Packet {
 }
 
 pub trait PacketRead: Packet + Sized {
-    fn read<R: Read>(reader: &mut R) -> Result<Self>;
+    fn read<R: Read>(reader: &mut R) -> Result<Self> {
+        let _length = reader.read_varint()?;
+
+        let (id, _) = reader.read_varint()?;
+        if id != Self::PACKET_ID {
+            return Err(Error::new(ErrorKind::Other, "Invalid packet id"));
+        }
+
+        Self::read_data(reader)
+    }
+
+    /// Read fields after length & id
+    fn read_data<R: Read>(reader: &mut R) -> Result<Self>;
 }
 
 pub trait PacketWrite: Packet {
