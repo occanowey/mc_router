@@ -1,6 +1,6 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
-use std::io::{Read, Result, Write};
+use std::io::{Read, Result};
 use packet_derive::Packet;
 
 #[derive(Debug, Packet)]
@@ -20,9 +20,9 @@ impl PacketRead for LoginStart {
 }
 
 impl PacketWrite for LoginStart {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
+    fn write_data(&self, packet: &mut PacketBuilder) -> Result<()> {
         packet.write_string(&self.username)?;
-        Ok(packet.write(writer)?)
+
+        Ok(())
     }
 }

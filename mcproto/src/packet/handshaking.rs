@@ -1,6 +1,6 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
-use std::io::{Read, Result, Write};
+use std::io::{Read, Result};
 use packet_derive::Packet;
 
 // i hate it here
@@ -83,12 +83,12 @@ impl PacketRead for Handshake {
 }
 
 impl PacketWrite for Handshake {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
+    fn write_data(&self, packet: &mut PacketBuilder) -> Result<()> {
         packet.write_varint(self.protocol_version)?;
         packet.write_string(self.modified_address())?;
         packet.write_ushort(self.server_port)?;
         packet.write_varint(self.next_state)?;
-        Ok(packet.write(writer)?)
+
+        Ok(())
     }
 }

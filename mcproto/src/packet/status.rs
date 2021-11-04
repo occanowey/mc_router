@@ -1,6 +1,6 @@
 use super::{Packet, PacketBuilder, PacketRead, PacketWrite};
 use crate::ReadExt;
-use std::io::{Read, Result, Write};
+use std::io::{Read, Result};
 use packet_derive::Packet;
 
 #[derive(Debug, Packet)]
@@ -14,9 +14,8 @@ impl PacketRead for Request {
 }
 
 impl PacketWrite for Request {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let packet = PacketBuilder::new(Self::PACKET_ID)?;
-        Ok(packet.write(writer)?)
+    fn write_data(&self, _: &mut PacketBuilder) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -33,10 +32,10 @@ impl PacketRead for Response {
 }
 
 impl PacketWrite for Response {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
+    fn write_data(&self, packet: &mut PacketBuilder) -> Result<()> {
         packet.write_string(&self.response)?;
-        Ok(packet.write(writer)?)
+
+        Ok(())
     }
 }
 
@@ -53,10 +52,10 @@ impl PacketRead for Ping {
 }
 
 impl PacketWrite for Ping {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
+    fn write_data(&self, packet: &mut PacketBuilder) -> Result<()> {
         packet.write_long(self.data)?;
-        Ok(packet.write(writer)?)
+
+        Ok(())
     }
 }
 
@@ -73,9 +72,9 @@ impl PacketRead for Pong {
 }
 
 impl PacketWrite for Pong {
-    fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let mut packet = PacketBuilder::new(Self::PACKET_ID)?;
+    fn write_data(&self, packet: &mut PacketBuilder) -> Result<()> {
         packet.write_long(self.data)?;
-        Ok(packet.write(writer)?)
+
+        Ok(())
     }
 }
