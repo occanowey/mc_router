@@ -96,8 +96,9 @@ dependencies = [
 
 [[package]]
 name = "hostname-validator"
-version = "1.0.0"
-source = "git+https://github.com/occanowey/hostname-validator#ab0cacf3e755d50236c6cca214a465cb6538173a"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be14a194c8bc9f0ce9901de058cf114bab6ae85d461adc4bfa37deb295ad89d4"
 
 [[package]]
 name = "lazy_static"
@@ -144,6 +145,10 @@ dependencies = [
 [[package]]
 name = "mcproto"
 version = "0.1.0"
+source = "git+https://github.com/occanowey/mcproto#bbb57efaac2fcebb6c84db23ee4cd4e02a358b1b"
+dependencies = [
+ "packet_derive",
+]
 
 [[package]]
 name = "num-integer"
@@ -162,6 +167,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac267bcc07f48ee5f8935ab0d24f316fb722d7a1292e2913f0cc196b29ffd611"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "packet_derive"
+version = "0.1.0"
+source = "git+https://github.com/occanowey/mcproto#bbb57efaac2fcebb6c84db23ee4cd4e02a358b1b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
