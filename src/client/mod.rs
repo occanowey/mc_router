@@ -18,7 +18,7 @@ use mcproto::packet::{Handshake, LoginStart, PacketWrite, Ping, Pong, Request, R
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
-        .name(format!("client({})", stream.peer_addr().unwrap()))
+        .name(format!("client({})", stream.peer_addr().map_or("not connected".to_owned(), |a| a.to_string())))
         .spawn(move || {
             if let Err(err) = handle_client(stream) {
                 error!("{}", err);
