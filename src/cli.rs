@@ -72,5 +72,5 @@ fn execute_list<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut 
 
 fn execute_reload<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
     *CONFIG.write().unwrap() = config::load().unwrap();
-    println!("reloaded forwards");
+    println!("> Reloaded config");
 }
