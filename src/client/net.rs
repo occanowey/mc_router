@@ -4,7 +4,7 @@ use std::net::{Shutdown, TcpStream};
 
 use self::sealed::*;
 use super::error::ClientError;
-use mcproto::packet::{Handshake, LoginStart, Ping, Pong, Request, Response};
+use mcproto::packet::{Disconnect, Handshake, LoginStart, Ping, Pong, Request, Response};
 
 mod sealed {
     use mcproto::packet::{PacketRead, PacketWrite};
@@ -97,5 +97,6 @@ pub struct Login;
 impl NetworkState for Login {}
 
 impl StateReadPacket<Login> for LoginStart {}
+impl StateWritePacket<Login> for Disconnect {}
 
 // play

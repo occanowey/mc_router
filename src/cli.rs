@@ -1,7 +1,4 @@
-use crate::{
-    config::{self, HostTarget},
-    CONFIG,
-};
+use crate::{config, CONFIG};
 use io::BufRead;
 use std::io;
 
@@ -14,7 +11,7 @@ pub fn start() {
 
         let command = parts.next().unwrap().to_lowercase();
         match command.as_str() {
-            "list" => execute_list(&command, &mut parts),
+            // "list" => execute_list(&command, &mut parts),
             // "forward" => execute_forward(&command, &mut parts),
             "reload" => execute_reload(&command, &mut parts),
 
@@ -23,22 +20,22 @@ pub fn start() {
     }
 }
 
-fn execute_list<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
-    let config = CONFIG.read().unwrap();
+// fn execute_list<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
+//     let config = CONFIG.read().unwrap();
 
-    println!("virtual hosts:");
-    for vhost in config.virtualhosts.iter() {
-        print!("  {} ", vhost.hostname);
-        match &vhost.target {
-            HostTarget::Forward(target) => println!("> {}", target),
-            HostTarget::Status {
-                online_players,
-                max_players,
-                description,
-            } => println!("# {:?} - {}/{}", description, online_players, max_players),
-        }
-    }
-}
+//     println!("virtual hosts:");
+//     for vhost in config.virtualhosts.iter() {
+//         print!("  {} ", vhost.hostname);
+//         match &vhost.target {
+//             HostTarget::Forward(target) => println!("> {}", target),
+//             HostTarget::Status {
+//                 online_players,
+//                 max_players,
+//                 description,
+//             } => println!("# {:?} - {}/{}", description, online_players, max_players),
+//         }
+//     }
+// }
 
 // fn execute_forward<'i, A: Iterator<Item = &'i str>>(_command: &str, args: &'i mut A) {
 //     let hostname = args.next().map(|s| s.parse());

@@ -10,15 +10,22 @@ mod error;
 mod net;
 
 use crate::{
-    config::{HostTarget, ServerAddr},
+    config::{Action, ForwardAction, LoginAction, ServerAddr, StatusAction},
     CONFIG,
 };
 use error::ClientError;
-use mcproto::packet::{Handshake, LoginStart, PacketWrite, Ping, Pong, Request, Response};
+use mcproto::packet::{
+    Disconnect, Handshake, LoginStart, PacketWrite, Ping, Pong, Request, Response,
+};
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
-        .name(format!("client({})", stream.peer_addr().map_or("not connected".to_owned(), |a| a.to_string())))
+        .name(format!(
+            "client({})",
+            stream
+                .peer_addr()
+                .map_or("not connected".to_owned(), |a| a.to_string())
+        ))
         .spawn(move || {
             if let Err(err) = handle_client(stream) {
                 error!("{}", err);
@@ -44,14 +51,14 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     info!("New connection from {}", client.address);
 
     trace!(
-        "finding target for hostname: {:?}",
+        "finding action for hostname: {:?}",
         handshake.server_address
     );
-    let target = match find_target(&handshake.server_address) {
-        Some(target) => target,
+    let action = match find_action(&handshake.server_address) {
+        Some(action) => action,
         None => {
             info!(
-                "Could not find target for {:?} requested by {}",
+                "Could not find action for {:?} requested by {}",
                 handshake.server_address, client.address
             );
 
@@ -59,25 +66,33 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
             return Ok(());
         }
     };
-    trace!("found target: {:?}", &target);
+    trace!("found action: {:?}", &action);
 
     match handshake.next_state {
         1 => {
             let mut client = client.status();
-            match target {
-                HostTarget::Status {
-                    online_players,
-                    max_players,
-                    description,
-                } => {
+
+            match action.get_status_action() {
+                StatusAction::Static { r#static } => {
+                    #[allow(clippy::or_fun_call)]
+                    let version_name = r#static.version_name.unwrap_or("router".into());
+                    let protocol_version = r#static
+                        .protocol_version
+                        .unwrap_or(handshake.protocol_version);
+                    let cur_players = r#static.cur_players.unwrap_or(0);
+                    let max_players = r#static.max_players.unwrap_or(20);
+                    #[allow(clippy::or_fun_call)]
+                    let description = r#static.description.unwrap_or("A Minecraft Server".into());
+
                     info!("Sending status: {}", client.address);
+
                     let _ = client.read::<Request>()?;
                     client.write(Response {
                         // TODO: have serde do this for me
                         response: format!(
                             r#"{{
                                 "version": {{
-                                    "name": "router",
+                                    "name": "{}",
                                     "protocol": {}
                                 }},
                                 "players": {{
@@ -88,7 +103,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                                     "text": "{}"
                                 }}
                             }}"#,
-                            handshake.protocol_version, max_players, online_players, description
+                            version_name, protocol_version, max_players, cur_players, description
                         ),
                     })?;
 
@@ -98,7 +113,9 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         Ok(Ping { data }) => client.write(Pong { data }),
 
                         // don't try to respond if stream was closed
-                        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => Ok(()),
+                        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => {
+                            Ok(())
+                        }
 
                         // bubble up other errors
                         Err(other) => Err(other),
@@ -107,8 +124,9 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     info!("Disconnected {}", client.address);
                     client.close()?;
                 }
-
-                HostTarget::Forward(target) => {
+                StatusAction::Forward {
+                    forward: ForwardAction(target),
+                } => {
                     info!("Forwarding status: {} -> {}", client.address, &target);
 
                     let mut server = connect_to_server(&target)?;
@@ -119,25 +137,30 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
 
                     info!("Disconnected {}", client.address);
                 }
+                StatusAction::Modify { modify } => todo!(),
             }
         }
         2 => {
             let mut client = client.login();
             let login_start = client.read::<LoginStart>()?;
 
-            match target {
-                HostTarget::Status { .. } => {
-                    // TODO: figure out what to do here...
-                    // rename status to static and have a kick msg?
+            match action.get_login_action() {
+                LoginAction::Static { r#static } => {
+                    #[allow(clippy::or_fun_call)]
+                    let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
-                    info!(
-                        "Client tried to login to status target {} ({})",
-                        client.address, login_start.username
-                    );
+                    info!("Sending disconnect: {}", client.address);
+
+                    client.write(Disconnect {
+                        reason: format!(r#"{{"text": "{}"}}"#, kick_message),
+                    })?;
+
+                    info!("Disconnected {}", client.address);
                     client.close()?;
                 }
-
-                HostTarget::Forward(target) => {
+                LoginAction::Forward {
+                    forward: ForwardAction(target),
+                } => {
                     info!(
                         "Forwarding login: {} ({}) -> {}",
                         client.address, login_start.username, target
@@ -161,15 +184,15 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     Ok(())
 }
 
-fn find_target(hostname: &str) -> Option<HostTarget> {
+fn find_action(hostname: &str) -> Option<Action> {
     let config = CONFIG.read().unwrap();
 
     config
         .virtualhosts
         .iter()
         .find(|f| f.hostname == hostname)
-        .or_else(|| config.get_default_target())
-        .map(|h| &h.target)
+        .or_else(|| config.get_default_host())
+        .map(|h| &h.action)
         .cloned()
 }
 

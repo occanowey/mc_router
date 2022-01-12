@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcproto = { git = "https://github.com/occanowey/mcproto" }
+mcproto = { git = "https://github.com/occanowey/mcproto", rev = "f74c1d6" }
 
 git-version = "0.3"
 lazy_static = "1.4"
