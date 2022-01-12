@@ -4,7 +4,7 @@ use std::{fmt, net::ToSocketAddrs, num::IntErrorKind, str::FromStr};
 
 static DEFAULT_PORT_STR: &str = "25565";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerAddr(Hostname, u16);
 
 impl fmt::Display for ServerAddr {

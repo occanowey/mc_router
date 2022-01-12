@@ -24,7 +24,7 @@ impl Config {
     pub fn get_default_target(&self) -> Option<&VirtualHost> {
         self.defaulthost
             .as_ref()
-            .and_then(|d| self.virtualhosts.iter().find(|f| f.hostname == &d.0))
+            .and_then(|d| self.virtualhosts.iter().find(|f| f.hostname == d.0.as_str()))
     }
 }
 
@@ -34,7 +34,7 @@ impl Config {
 // prority:
 // 1. forward
 // 2. status
-// try connect to farward of dispaly preset status if that fails
+// try connect to farward of display preset status if that fails
 //
 // round robin:
 // 1. forward
@@ -51,7 +51,7 @@ pub struct VirtualHost {
 pub enum HostTarget {
     Forward(ServerAddr),
 
-    // TODO: flesh this out, there's many more fields the status can contain (or just allow a raw json object)
+    // TODO: flesh this out, there's many more fields the status can contain (or just allow a raw json object?)
     Status {
         online_players: i64,
         max_players: i64,

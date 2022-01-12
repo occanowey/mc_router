@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, net::Ipv4Addr, str::FromStr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hostname(pub String);
 
 impl fmt::Display for Hostname {
