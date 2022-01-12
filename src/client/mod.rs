@@ -92,9 +92,19 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         ),
                     })?;
 
-                    let ping = client.read::<Ping>()?;
-                    client.write(Pong { data: ping.data })?;
+                    // attempt ping/pong
+                    match client.read() {
+                        // respond to ping request
+                        Ok(Ping { data }) => client.write(Pong { data }),
 
+                        // don't try to respond if stream was closed
+                        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => Ok(()),
+
+                        // bubble up other errors
+                        Err(other) => Err(other),
+                    }?;
+
+                    info!("Disconnected {}", client.address);
                     client.close()?;
                 }
 
