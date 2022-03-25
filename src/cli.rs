@@ -9,7 +9,12 @@ pub fn start() {
         let line = line.unwrap();
         let mut parts = line.split_whitespace();
 
-        let command = parts.next().unwrap().to_lowercase();
+        let command = if let Some(command) = parts.next() {
+            command.to_lowercase()
+        } else {
+            continue
+        };
+
         match command.as_str() {
             // "list" => execute_list(&command, &mut parts),
             // "forward" => execute_forward(&command, &mut parts),
