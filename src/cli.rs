@@ -68,6 +68,15 @@ pub fn start() {
 // }
 
 fn execute_reload<'i, A: Iterator<Item = &'i str>>(_command: &str, _args: &'i mut A) {
-    *CONFIG.write().unwrap() = config::load().unwrap();
-    println!("> Reloaded config");
+    let config = config::load();
+
+    match config {
+        Ok(config) => {
+            *CONFIG.write().unwrap() = config;
+            println!("> Reloaded config");
+        }
+        Err(error) => {
+            println!("Failed to read config:\n    {}", error);
+        }
+    }
 }

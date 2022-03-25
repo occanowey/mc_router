@@ -18,8 +18,12 @@ lazy_static! {
 fn main() {
     logger::setup().unwrap();
 
-    {
-        *CONFIG.write().unwrap() = config::load().unwrap()
+    match config::load() {
+        Ok(config) => *CONFIG.write().unwrap() = config,
+        Err(error) => {
+            println!("Couldn't start router, Failed to read config:\n    {}", error);
+            return;
+        }
     }
 
     let address = env::args().nth(1).expect("address required");

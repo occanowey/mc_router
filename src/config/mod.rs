@@ -1,11 +1,10 @@
-mod error;
 mod hostname;
 mod serveraddr;
 
 pub use hostname::Hostname;
 pub use serveraddr::ServerAddr;
 
-use error::ConfigError;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
@@ -125,23 +124,25 @@ pub struct ForwardAction(pub ServerAddr);
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ModifyAction {}
 
-pub fn load() -> Result<Config, ConfigError> {
-    File::open(CONFIG_PATH)
-        .map_err(ConfigError::from)
-        .and_then(|file| serde_yaml::from_reader(file).map_err(ConfigError::from))
-        .or_else(|config| match config {
-            ConfigError::IO(ref e) if e.kind() == io::ErrorKind::NotFound => {
-                let config = Default::default();
-                save(&config)?;
+pub fn load() -> Result<Config> {
+    let file = File::open(CONFIG_PATH);
 
+    if let Ok(file) = file {
+        Ok(serde_yaml::from_reader(file)?)
+    } else {
+        Ok(match file.unwrap_err() {
+            err if err.kind() == io::ErrorKind::NotFound => {
+                let config = Default::default();
+
+                save(&config)?;
                 Ok(config)
             }
-            err => Err(err),
-        })
+            other => Err(other),
+        }?)
+    }
 }
 
-pub fn save(config: &Config) -> Result<(), ConfigError> {
-    let data = serde_yaml::to_string(config)?;
-
-    fs::write(CONFIG_PATH, data).map_err(ConfigError::from)
+pub fn save(config: &Config) -> Result<()> {
+    fs::write(CONFIG_PATH, serde_yaml::to_string(config)?)?;
+    Ok(())
 }
