@@ -171,7 +171,7 @@ dependencies = [
 [[package]]
 name = "mcproto"
 version = "0.1.0"
-source = "git+https://github.com/occanowey/mcproto?rev=f74c1d6#f74c1d64969e91195a8bdd91c3ec5a22d34f9871"
+source = "git+https://github.com/occanowey/mcproto?rev=15d7dd4#15d7dd4ec4f8ba5a519a05f57e1f07de64fa15d8"
 dependencies = [
  "packet_derive",
 ]
@@ -198,7 +198,7 @@ dependencies = [
 [[package]]
 name = "packet_derive"
 version = "0.1.0"
-source = "git+https://github.com/occanowey/mcproto?rev=f74c1d6#f74c1d64969e91195a8bdd91c3ec5a22d34f9871"
+source = "git+https://github.com/occanowey/mcproto?rev=15d7dd4#15d7dd4ec4f8ba5a519a05f57e1f07de64fa15d8"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -5,18 +5,23 @@ use std::{
 };
 
 use log::{error, info, trace};
+use mcproto::{
+    net::handler_from_stream,
+    packet::{
+        handshaking::{Handshake, NextState},
+        login::{Disconnect, LoginStart},
+        status::{Ping, Pong, Request, Response},
+        PacketWrite,
+    },
+};
 
 mod error;
-mod net;
 
 use crate::{
     config::{Action, ForwardAction, LoginAction, ServerAddr, StatusAction},
     CONFIG,
 };
 use error::ClientError;
-use mcproto::packet::{
-    Disconnect, Handshake, LoginStart, PacketWrite, Ping, Pong, Request, Response,
-};
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
@@ -35,11 +40,12 @@ pub fn spawn_client_handler(stream: TcpStream) {
 }
 
 fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
-    let mut client = net::handler_from_stream(stream);
+    let address = stream.peer_addr()?.to_string();
+    let mut client = handler_from_stream(stream);
 
-    trace!("reading handshake from {}", &client.address);
+    trace!("reading handshake from {}", &address);
     let handshake = match client.read::<Handshake>() {
-        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => {
+        Err(ioerr) if ioerr.kind() == ErrorKind::UnexpectedEof => {
             trace!("client didn't send any data, closing");
             return Ok(());
         }
@@ -48,7 +54,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     }?;
     trace!("read handshake: {:?}", handshake);
 
-    info!("New connection from {}", client.address);
+    info!("New connection from {}", &address);
 
     trace!(
         "finding action for hostname: {:?}",
@@ -59,7 +65,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
         None => {
             info!(
                 "Could not find action for {:?} requested by {}",
-                handshake.server_address, client.address
+                handshake.server_address, &address
             );
 
             client.close()?;
@@ -69,7 +75,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     trace!("found action: {:?}", &action);
 
     match handshake.next_state {
-        1 => {
+        NextState::Status => {
             let mut client = client.status();
 
             match action.get_status_action() {
@@ -78,13 +84,13 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     let version_name = r#static.version_name.unwrap_or("router".into());
                     let protocol_version = r#static
                         .protocol_version
-                        .unwrap_or(handshake.protocol_version);
+                        .unwrap_or(*handshake.protocol_version);
                     let cur_players = r#static.cur_players.unwrap_or(0);
                     let max_players = r#static.max_players.unwrap_or(20);
                     #[allow(clippy::or_fun_call)]
                     let description = r#static.description.unwrap_or("A Minecraft Server".into());
 
-                    info!("Sending status: {}", client.address);
+                    info!("Sending status: {}", &address);
 
                     let _ = client.read::<Request>()?;
                     client.write(Response {
@@ -113,34 +119,32 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         Ok(Ping { data }) => client.write(Pong { data }),
 
                         // don't try to respond if stream was closed
-                        Err(ClientError::IO(ioerr)) if ioerr.kind() == ErrorKind::UnexpectedEof => {
-                            Ok(())
-                        }
+                        Err(ioerr) if ioerr.kind() == ErrorKind::UnexpectedEof => Ok(()),
 
                         // bubble up other errors
                         Err(other) => Err(other),
                     }?;
 
-                    info!("Disconnected {}", client.address);
+                    info!("Disconnected {}", &address);
                     client.close()?;
                 }
                 StatusAction::Forward {
                     forward: ForwardAction(target),
                 } => {
-                    info!("Forwarding status: {} -> {}", client.address, &target);
+                    info!("Forwarding status: {} -> {}", &address, &target);
 
                     let mut server = connect_to_server(&target)?;
 
                     // TODO: add config option to re write handshake to include target hostname/port
                     handshake.write(&mut server)?;
-                    blocking_proxy(&client.address, client.stream, server)?;
+                    blocking_proxy(&address, client.into_stream(), server)?;
 
-                    info!("Disconnected {}", client.address);
+                    info!("Disconnected {}", &address);
                 }
                 StatusAction::Modify { modify } => todo!(),
             }
         }
-        2 => {
+        NextState::Login => {
             let mut client = client.login();
             let login_start = client.read::<LoginStart>()?;
 
@@ -149,13 +153,13 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     #[allow(clippy::or_fun_call)]
                     let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
-                    info!("Sending disconnect: {}", client.address);
+                    info!("Sending disconnect: {}", &address);
 
                     client.write(Disconnect {
                         reason: format!(r#"{{"text": "{}"}}"#, kick_message),
                     })?;
 
-                    info!("Disconnected {}", client.address);
+                    info!("Disconnected {}", &address);
                     client.close()?;
                 }
                 LoginAction::Forward {
@@ -163,7 +167,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                 } => {
                     info!(
                         "Forwarding login: {} ({}) -> {}",
-                        client.address, login_start.username, target
+                        &address, login_start.username, target
                     );
 
                     let mut server = connect_to_server(&target)?;
@@ -171,14 +175,14 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     // TODO: add config option to re write handshake to include target hostname/port
                     handshake.write(&mut server)?;
                     login_start.write(&mut server)?;
-                    blocking_proxy(&client.address, client.stream, server)?;
+                    blocking_proxy(&address, client.into_stream(), server)?;
 
-                    info!("Disconnected {} ({})", client.address, login_start.username);
+                    info!("Disconnected {} ({})", &address, login_start.username);
                 }
             }
         }
 
-        other => unreachable!("next state should be 1 or 2, got {}", other),
+        NextState::Unknown(other) => unreachable!("unknown next state: {}", other),
     }
 
     Ok(())
