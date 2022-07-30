@@ -1,12 +1,12 @@
 use std::{
-    io::{self, ErrorKind},
+    io,
     net::{Shutdown, TcpStream},
     thread,
 };
 
 use log::{error, info, trace};
 use mcproto::{
-    net::handler_from_stream,
+    net::{handler_from_stream, side::Server, state::NetworkState},
     packet::{
         handshaking::{Handshake, NextState},
         login::{Disconnect, LoginStart},
@@ -22,6 +22,8 @@ use crate::{
     CONFIG,
 };
 use error::ClientError;
+
+pub type NetworkHandler<S> = mcproto::net::NetworkHandler<Server, S>;
 
 pub fn spawn_client_handler(stream: TcpStream) {
     thread::Builder::new()
@@ -41,11 +43,11 @@ pub fn spawn_client_handler(stream: TcpStream) {
 
 fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     let address = stream.peer_addr()?.to_string();
-    let mut client = handler_from_stream(stream);
+    let mut client = handler_from_stream(stream)?;
 
     trace!("reading handshake from {}", &address);
     let handshake = match client.read::<Handshake>() {
-        Err(ioerr) if ioerr.kind() == ErrorKind::UnexpectedEof => {
+        Err(mcproto::error::Error::UnexpectedDisconect(_)) => {
             trace!("client didn't send any data, closing");
             return Ok(());
         }
@@ -119,7 +121,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         Ok(Ping { data }) => client.write(Pong { data }),
 
                         // don't try to respond if stream was closed
-                        Err(ioerr) if ioerr.kind() == ErrorKind::UnexpectedEof => Ok(()),
+                        Err(mcproto::error::Error::UnexpectedDisconect(_)) => Ok(()),
 
                         // bubble up other errors
                         Err(other) => Err(other),
@@ -132,13 +134,7 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     forward: ForwardAction(target),
                 } => {
                     info!("Forwarding status: {} -> {}", &address, &target);
-
-                    let mut server = connect_to_server(&target)?;
-
-                    // TODO: add config option to re write handshake to include target hostname/port
-                    handshake.write(&mut server)?;
-                    blocking_proxy(&address, client.into_stream(), server)?;
-
+                    handle_forward_action(client, &address, &handshake, None, target)?;
                     info!("Disconnected {}", &address);
                 }
                 StatusAction::Modify { modify } => todo!(),
@@ -169,14 +165,13 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         "Forwarding login: {} ({}) -> {}",
                         &address, login_start.username, target
                     );
-
-                    let mut server = connect_to_server(&target)?;
-
-                    // TODO: add config option to re write handshake to include target hostname/port
-                    handshake.write(&mut server)?;
-                    login_start.write(&mut server)?;
-                    blocking_proxy(&address, client.into_stream(), server)?;
-
+                    handle_forward_action(
+                        client,
+                        &address,
+                        &handshake,
+                        Some(&login_start),
+                        target,
+                    )?;
                     info!("Disconnected {} ({})", &address, login_start.username);
                 }
             }
@@ -186,6 +181,25 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
     }
 
     Ok(())
+}
+
+fn handle_forward_action<S: NetworkState>(
+    client: NetworkHandler<S>,
+    address: &str,
+    handshake: &Handshake,
+    login_start: Option<&LoginStart>,
+    target: ServerAddr,
+) -> Result<(), ClientError> {
+    // todo log
+    let mut server = connect_to_server(&target)?;
+
+    // TODO: add config option to re write handshake to include target hostname/port
+    handshake.write(&mut server)?;
+    if let Some(login_start) = login_start {
+        login_start.write(&mut server)?;
+    }
+
+    blocking_proxy(address, client.into_stream(), server)
 }
 
 fn find_action(hostname: &str) -> Option<Action> {
@@ -209,7 +223,7 @@ fn connect_to_server(address: &ServerAddr) -> Result<TcpStream, ClientError> {
         //     info!("Could not connect to server, closing client connection.");
         //     return Ok(());
         // }
-
+        //
         res => res,
     }?)
 }

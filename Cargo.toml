@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcproto = { git = "https://github.com/occanowey/mcproto", rev = "15d7dd4" }
+mcproto = { git = "https://github.com/occanowey/mcproto", rev = "963cf11" }
 
 git-version = "0.3"
 lazy_static = "1.4"
@@ -17,5 +17,5 @@ hostname-validator = "1.1"
 
 log = "0.4"
 chrono = "0.4"
-fern = {version = "0.6.0", default-features = false, features = ["colored", "date-based"]}
+fern = { version = "0.6.0", default-features = false, features = ["colored", "date-based"] }
 anyhow = "1.0"

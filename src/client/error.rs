@@ -2,6 +2,7 @@ use std::{error::Error, fmt, io};
 
 #[derive(Debug)]
 pub enum ClientError {
+    Proto(mcproto::error::Error),
     IO(io::Error),
 }
 
@@ -10,7 +11,8 @@ impl fmt::Display for ClientError {
         write!(f, "ClientError - ")?;
 
         match self {
-            ClientError::IO(io_err) => write!(f, "IO: {:?}", io_err),
+            ClientError::Proto(err) => write!(f, "Proto: {:?}", err),
+            ClientError::IO(err) => write!(f, "IO: {:?}", err),
         }
     }
 }
@@ -18,8 +20,15 @@ impl fmt::Display for ClientError {
 impl Error for ClientError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ClientError::IO(io_err) => Some(io_err),
+            ClientError::Proto(err) => Some(err),
+            ClientError::IO(err) => Some(err),
         }
+    }
+}
+
+impl From<mcproto::error::Error> for ClientError {
+    fn from(error: mcproto::error::Error) -> Self {
+        ClientError::Proto(error)
     }
 }
 

@@ -12,7 +12,7 @@ pub fn start() {
         let command = if let Some(command) = parts.next() {
             command.to_lowercase()
         } else {
-            continue
+            continue;
         };
 
         match command.as_str() {

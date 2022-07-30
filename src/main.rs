@@ -21,7 +21,10 @@ fn main() {
     match config::load() {
         Ok(config) => *CONFIG.write().unwrap() = config,
         Err(error) => {
-            println!("Couldn't start router, Failed to read config:\n    {}", error);
+            println!(
+                "Couldn't start router, Failed to read config:\n    {}",
+                error
+            );
             return;
         }
     }
