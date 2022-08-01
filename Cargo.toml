@@ -9,13 +9,15 @@ edition = "2018"
 [dependencies]
 mcproto = { git = "https://github.com/occanowey/mcproto", rev = "963cf11" }
 
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+tracing-logfmt = "0.1"
+chrono = "0.4"
+
 git-version = "0.3"
 lazy_static = "1.4"
 serde = {version = "1.0", features = ["derive"]}
 serde_yaml = "0.8"
 hostname-validator = "1.1"
-
-log = "0.4"
-chrono = "0.4"
-fern = { version = "0.6.0", default-features = false, features = ["colored", "date-based"] }
 anyhow = "1.0"

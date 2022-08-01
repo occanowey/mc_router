@@ -4,7 +4,6 @@ use std::{
     thread,
 };
 
-use log::{error, info, trace};
 use mcproto::{
     net::{handler_from_stream, side::Server, state::NetworkState},
     packet::{
@@ -14,6 +13,7 @@ use mcproto::{
         PacketWrite,
     },
 };
+use tracing::{debug, error, field, info, info_span, trace};
 
 mod error;
 
@@ -26,59 +26,51 @@ use error::ClientError;
 pub type NetworkHandler<S> = mcproto::net::NetworkHandler<Server, S>;
 
 pub fn spawn_client_handler(stream: TcpStream) {
+    let addr = stream
+        .peer_addr()
+        .map_or("<not connected>".to_owned(), |a| a.to_string());
+
     thread::Builder::new()
-        .name(format!(
-            "client({})",
-            stream
-                .peer_addr()
-                .map_or("not connected".to_owned(), |a| a.to_string())
-        ))
+        .name(format!("client({addr})"))
         .spawn(move || {
-            if let Err(err) = handle_client(stream) {
-                error!("{}", err);
-            };
+            let span = info_span!("client", %addr, username = field::Empty);
+            let _enter = span.enter();
+
+            match handle_client(stream, addr) {
+                Ok(_) | Err(ClientError::Proto(mcproto::error::Error::UnexpectedDisconect(_))) => {
+                    info!("Connection closed");
+                }
+                Err(err) => {
+                    error!(%err, "Error while handling connection");
+                }
+            }
         })
         .unwrap();
 }
 
-fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
-    let address = stream.peer_addr()?.to_string();
+fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> {
+    debug!("Accepted connection");
     let mut client = handler_from_stream(stream)?;
 
-    trace!("reading handshake from {}", &address);
-    let handshake = match client.read::<Handshake>() {
-        Err(mcproto::error::Error::UnexpectedDisconect(_)) => {
-            trace!("client didn't send any data, closing");
-            return Ok(());
-        }
+    let handshake = client.read::<Handshake>()?;
+    trace!(?handshake, "Recieved handshake packet");
+    info!("New client has connected");
 
-        handshake => handshake,
-    }?;
-    trace!("read handshake: {:?}", handshake);
-
-    info!("New connection from {}", &address);
-
-    trace!(
-        "finding action for hostname: {:?}",
-        handshake.server_address
-    );
+    debug!("Finding action for {}", handshake.server_address);
     let action = match find_action(&handshake.server_address) {
         Some(action) => action,
         None => {
-            info!(
-                "Could not find action for {:?} requested by {}",
-                handshake.server_address, &address
-            );
-
+            info!("No action found for {}", handshake.server_address);
             client.close()?;
             return Ok(());
         }
     };
-    trace!("found action: {:?}", &action);
+    debug!(hostname = %handshake.server_address, ?action, "Found action");
 
     match handshake.next_state {
         NextState::Status => {
             let mut client = client.status();
+            debug!("State changed to status");
 
             match action.get_status_action() {
                 StatusAction::Static { r#static } => {
@@ -92,9 +84,10 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     #[allow(clippy::or_fun_call)]
                     let description = r#static.description.unwrap_or("A Minecraft Server".into());
 
-                    info!("Sending status: {}", &address);
+                    let request = client.read::<Request>()?;
+                    trace!(?request, "Recieved request packet");
 
-                    let _ = client.read::<Request>()?;
+                    info!("Sending status");
                     client.write(Response {
                         // TODO: have serde do this for me
                         response: format!(
@@ -116,9 +109,13 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                     })?;
 
                     // attempt ping/pong
-                    match client.read() {
+                    let ping = client.read();
+                    match ping {
                         // respond to ping request
-                        Ok(Ping { data }) => client.write(Pong { data }),
+                        Ok(Ping { data }) => {
+                            trace!(ping = ?ping.unwrap(), "Recieved ping packet");
+                            client.write(Pong { data })
+                        }
 
                         // don't try to respond if stream was closed
                         Err(mcproto::error::Error::UnexpectedDisconect(_)) => Ok(()),
@@ -127,44 +124,42 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         Err(other) => Err(other),
                     }?;
 
-                    info!("Disconnected {}", &address);
+                    trace!("Closing connection");
                     client.close()?;
                 }
                 StatusAction::Forward {
                     forward: ForwardAction(target),
                 } => {
-                    info!("Forwarding status: {} -> {}", &address, &target);
+                    info!("Forwarding status to {target}");
                     handle_forward_action(client, &address, &handshake, None, target)?;
-                    info!("Disconnected {}", &address);
                 }
-                StatusAction::Modify { modify } => todo!(),
+                StatusAction::Modify { modify: _ } => todo!(),
             }
         }
         NextState::Login => {
             let mut client = client.login();
+            debug!("State changed to login");
             let login_start = client.read::<LoginStart>()?;
+            tracing::Span::current().record("username", &login_start.username);
+            trace!(?login_start, "Recieved login start packet");
 
             match action.get_login_action() {
                 LoginAction::Static { r#static } => {
                     #[allow(clippy::or_fun_call)]
                     let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
-                    info!("Sending disconnect: {}", &address);
-
+                    info!("Sending disconnect");
                     client.write(Disconnect {
                         reason: format!(r#"{{"text": "{}"}}"#, kick_message),
                     })?;
 
-                    info!("Disconnected {}", &address);
+                    trace!("Closing connection");
                     client.close()?;
                 }
                 LoginAction::Forward {
                     forward: ForwardAction(target),
                 } => {
-                    info!(
-                        "Forwarding login: {} ({}) -> {}",
-                        &address, login_start.username, target
-                    );
+                    info!("forwarding login to {target}");
                     handle_forward_action(
                         client,
                         &address,
@@ -172,7 +167,6 @@ fn handle_client(stream: TcpStream) -> Result<(), ClientError> {
                         Some(&login_start),
                         target,
                     )?;
-                    info!("Disconnected {} ({})", &address, login_start.username);
                 }
             }
         }
@@ -215,7 +209,7 @@ fn find_action(hostname: &str) -> Option<Action> {
 }
 
 fn connect_to_server(address: &ServerAddr) -> Result<TcpStream, ClientError> {
-    trace!("connecting to {:?}", address);
+    debug!("Connecting to {:?}", address);
     Ok(match TcpStream::connect(&address) {
         // don't really remember why this was a thing
 
