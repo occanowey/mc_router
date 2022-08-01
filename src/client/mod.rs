@@ -1,6 +1,6 @@
 use std::{
     io,
-    net::{Shutdown, TcpStream},
+    net::{Shutdown, SocketAddr, TcpStream},
     thread,
 };
 
@@ -25,11 +25,7 @@ use error::ClientError;
 
 pub type NetworkHandler<S> = mcproto::net::NetworkHandler<Server, S>;
 
-pub fn spawn_client_handler(stream: TcpStream) {
-    let addr = stream
-        .peer_addr()
-        .map_or("<not connected>".to_owned(), |a| a.to_string());
-
+pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
     thread::Builder::new()
         .name(format!("client({addr})"))
         .spawn(move || {
@@ -48,8 +44,10 @@ pub fn spawn_client_handler(stream: TcpStream) {
         .unwrap();
 }
 
-fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> {
+fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError> {
     debug!("Accepted connection");
+
+    stream.set_nodelay(true)?;
     let mut client = handler_from_stream(stream)?;
 
     let handshake = client.read::<Handshake>()?;
@@ -109,20 +107,9 @@ fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> 
                     })?;
 
                     // attempt ping/pong
-                    let ping = client.read();
-                    match ping {
-                        // respond to ping request
-                        Ok(Ping { data }) => {
-                            trace!(ping = ?ping.unwrap(), "Recieved ping packet");
-                            client.write(Pong { data })
-                        }
-
-                        // don't try to respond if stream was closed
-                        Err(mcproto::error::Error::UnexpectedDisconect(_)) => Ok(()),
-
-                        // bubble up other errors
-                        Err(other) => Err(other),
-                    }?;
+                    let ping: Ping = client.read()?;
+                    trace!(?ping, "Recieved ping packet");
+                    client.write(Pong { data: ping.data })?;
 
                     trace!("Closing connection");
                     client.close()?;
@@ -131,7 +118,7 @@ fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> 
                     forward: ForwardAction(target),
                 } => {
                     info!("Forwarding status to {target}");
-                    handle_forward_action(client, &address, &handshake, None, target)?;
+                    handle_forward_action(client, addr, &handshake, None, target)?;
                 }
                 StatusAction::Modify { modify: _ } => todo!(),
             }
@@ -160,13 +147,7 @@ fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> 
                     forward: ForwardAction(target),
                 } => {
                     info!("forwarding login to {target}");
-                    handle_forward_action(
-                        client,
-                        &address,
-                        &handshake,
-                        Some(&login_start),
-                        target,
-                    )?;
+                    handle_forward_action(client, addr, &handshake, Some(&login_start), target)?;
                 }
             }
         }
@@ -179,7 +160,7 @@ fn handle_client(stream: TcpStream, address: String) -> Result<(), ClientError> 
 
 fn handle_forward_action<S: NetworkState>(
     client: NetworkHandler<S>,
-    address: &str,
+    addr: SocketAddr,
     handshake: &Handshake,
     login_start: Option<&LoginStart>,
     target: ServerAddr,
@@ -193,7 +174,7 @@ fn handle_forward_action<S: NetworkState>(
         login_start.write(&mut server)?;
     }
 
-    blocking_proxy(address, client.into_stream(), server)
+    blocking_proxy(&addr, client.into_stream(), server)
 }
 
 fn find_action(hostname: &str) -> Option<Action> {
@@ -208,9 +189,9 @@ fn find_action(hostname: &str) -> Option<Action> {
         .cloned()
 }
 
-fn connect_to_server(address: &ServerAddr) -> Result<TcpStream, ClientError> {
-    debug!("Connecting to {:?}", address);
-    Ok(match TcpStream::connect(&address) {
+fn connect_to_server(addr: &ServerAddr) -> Result<TcpStream, ClientError> {
+    debug!("Connecting to {:?}", addr);
+    Ok(match TcpStream::connect(&addr) {
         // don't really remember why this was a thing
 
         // Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
@@ -223,7 +204,7 @@ fn connect_to_server(address: &ServerAddr) -> Result<TcpStream, ClientError> {
 }
 
 fn blocking_proxy(
-    client_address: &str,
+    client_addr: &SocketAddr,
     client_stream: TcpStream,
     server: TcpStream,
 ) -> Result<(), ClientError> {
@@ -234,12 +215,12 @@ fn blocking_proxy(
     let server_write = server_read.try_clone()?;
 
     let cs_thread = spawn_copy_thread(
-        format!("client({}) c->s", client_address),
+        format!("client({}) c->s", client_addr),
         client_read,
         server_write,
     )?;
     let sc_thread = spawn_copy_thread(
-        format!("client({}) s->c", client_address),
+        format!("client({}) s->c", client_addr),
         server_read,
         client_write,
     )?;

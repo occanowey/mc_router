@@ -14,10 +14,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 tracing-logfmt = "0.1"
 chrono = "0.4"
-
 git-version = "0.3"
+
 lazy_static = "1.4"
 serde = {version = "1.0", features = ["derive"]}
-serde_yaml = "0.8"
+serde_yaml = "0.9"
 hostname-validator = "1.1"
 anyhow = "1.0"

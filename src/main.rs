@@ -6,7 +6,13 @@ mod client;
 mod config;
 mod logger;
 
-use std::{env, net::TcpListener, sync::RwLock, thread, time::Duration};
+use std::{
+    env,
+    net::{SocketAddr, TcpListener},
+    sync::RwLock,
+    thread,
+    time::Duration,
+};
 
 use client::spawn_client_handler;
 use config::Config;
@@ -30,24 +36,28 @@ fn main() {
         }
     }
 
-    let address = env::args().nth(1).expect("address required");
-
+    let addr = env::args()
+        .nth(1)
+        .expect("expected address")
+        .parse()
+        .expect("address was in unknown format");
     thread::Builder::new()
         .name("server".to_string())
-        .spawn(move || start_server(&address))
+        .spawn(move || run_server(addr))
         .unwrap();
 
     cli::start();
 }
 
-fn start_server(address: &str) {
+fn run_server(addr: SocketAddr) {
     info!("Starting router rev:{}...", git_version::git_version!());
     thread::sleep(Duration::from_millis(250));
 
-    let listener = TcpListener::bind(address).unwrap();
-    info!("Listening on {}", address);
+    let listener = TcpListener::bind(addr).unwrap();
+    info!("Listening on {}", addr);
 
-    for stream in listener.incoming() {
-        spawn_client_handler(stream.unwrap());
+    loop {
+        let (stream, addr) = listener.accept().unwrap();
+        spawn_client_handler(stream, addr);
     }
 }
