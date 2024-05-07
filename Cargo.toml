@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcproto = { git = "https://github.com/occanowey/mcproto", rev = "963cf11" }
+mcproto = { git = "https://github.com/occanowey/mcproto", rev = "c1638bf" }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -17,7 +17,7 @@ chrono = "0.4"
 git-version = "0.3"
 
 lazy_static = "1.4"
-serde = {version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 hostname-validator = "1.1"
 anyhow = "1.0"

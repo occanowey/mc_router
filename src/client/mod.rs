@@ -6,12 +6,7 @@ use std::{
 
 use mcproto::{
     net::{handler_from_stream, side::Server, state::NetworkState},
-    packet::{
-        handshaking::{Handshake, NextState},
-        login::{Disconnect, LoginStart},
-        status::{Ping, Pong, Request, Response},
-        PacketWrite,
-    },
+    packet::{handshaking, login, status, PacketWrite},
 };
 use tracing::{debug, error, field, info, info_span, trace};
 
@@ -50,7 +45,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
     stream.set_nodelay(true)?;
     let mut client = handler_from_stream(stream)?;
 
-    let handshake = client.read::<Handshake>()?;
+    let handshake = client.read::<handshaking::Handshake>()?;
     trace!(?handshake, "Recieved handshake packet");
     info!("New client has connected");
 
@@ -66,7 +61,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
     debug!(hostname = %handshake.server_address, ?action, "Found action");
 
     match handshake.next_state {
-        NextState::Status => {
+        handshaking::NextState::Status => {
             let mut client = client.status();
             debug!("State changed to status");
 
@@ -76,17 +71,17 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
                     let version_name = r#static.version_name.unwrap_or("router".into());
                     let protocol_version = r#static
                         .protocol_version
-                        .unwrap_or(*handshake.protocol_version);
+                        .unwrap_or(handshake.protocol_version);
                     let cur_players = r#static.cur_players.unwrap_or(0);
                     let max_players = r#static.max_players.unwrap_or(20);
                     #[allow(clippy::or_fun_call)]
                     let description = r#static.description.unwrap_or("A Minecraft Server".into());
 
-                    let request = client.read::<Request>()?;
+                    let request = client.read::<status::StatusRequest>()?;
                     trace!(?request, "Recieved request packet");
 
                     info!("Sending status");
-                    client.write(Response {
+                    client.write(status::StatusResponse {
                         // TODO: have serde do this for me
                         response: format!(
                             r#"{{
@@ -107,9 +102,11 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
                     })?;
 
                     // attempt ping/pong
-                    let ping: Ping = client.read()?;
+                    let ping: status::PingRequest = client.read()?;
                     trace!(?ping, "Recieved ping packet");
-                    client.write(Pong { data: ping.data })?;
+                    client.write(status::PingResponse {
+                        payload: ping.payload,
+                    })?;
 
                     trace!("Closing connection");
                     client.close()?;
@@ -123,10 +120,10 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
                 StatusAction::Modify { modify: _ } => todo!(),
             }
         }
-        NextState::Login => {
+        handshaking::NextState::Login => {
             let mut client = client.login();
             debug!("State changed to login");
-            let login_start = client.read::<LoginStart>()?;
+            let login_start = client.read::<login::LoginStart>()?;
             tracing::Span::current().record("username", &login_start.username);
             trace!(?login_start, "Recieved login start packet");
 
@@ -136,7 +133,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
                     let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
                     info!("Sending disconnect");
-                    client.write(Disconnect {
+                    client.write(login::Disconnect {
                         reason: format!(r#"{{"text": "{}"}}"#, kick_message),
                     })?;
 
@@ -152,7 +149,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
             }
         }
 
-        NextState::Unknown(other) => unreachable!("unknown next state: {}", other),
+        handshaking::NextState::Unknown(other) => unreachable!("unknown next state: {}", other),
     }
 
     Ok(())
@@ -161,8 +158,8 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
 fn handle_forward_action<S: NetworkState>(
     client: NetworkHandler<S>,
     addr: SocketAddr,
-    handshake: &Handshake,
-    login_start: Option<&LoginStart>,
+    handshake: &handshaking::Handshake,
+    login_start: Option<&login::LoginStart>,
     target: ServerAddr,
 ) -> Result<(), ClientError> {
     // todo log
@@ -191,7 +188,8 @@ fn find_action(hostname: &str) -> Option<Action> {
 
 fn connect_to_server(addr: &ServerAddr) -> Result<TcpStream, ClientError> {
     debug!("Connecting to {:?}", addr);
-    Ok(match TcpStream::connect(&addr) {
+    #[allow(clippy::match_single_binding)]
+    Ok(match TcpStream::connect(addr) {
         // don't really remember why this was a thing
 
         // Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
