@@ -7,6 +7,7 @@ pub use serveraddr::ServerAddr;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io,
 };
@@ -15,17 +16,56 @@ static CONFIG_PATH: &str = "config.yml";
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
-    defaulthost: Option<Hostname>,
-    pub virtualhosts: Vec<VirtualHost>,
+    #[serde(rename = "defaulthost")]
+    default_host: Option<Hostname>,
+    #[serde(rename = "virtualhosts", with = "hosts_serde")]
+    pub hosts: HashMap<Hostname, VirtualHost>,
+}
+
+mod hosts_serde {
+    use std::collections::HashMap;
+
+    use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serializer};
+
+    use super::{Hostname, VirtualHost};
+
+    pub fn serialize<S>(
+        hosts: &HashMap<Hostname, VirtualHost>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(hosts.len()))?;
+
+        hosts
+            .values()
+            .try_for_each(|host| seq.serialize_element(host))?;
+
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<Hostname, VirtualHost>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let mut hosts = HashMap::new();
+
+        Vec::<VirtualHost>::deserialize(deserializer)?
+            .into_iter()
+            .for_each(|host| {
+                hosts.insert(host.hostname.clone(), host);
+            });
+
+        Ok(hosts)
+    }
 }
 
 impl Config {
     pub fn get_default_host(&self) -> Option<&VirtualHost> {
-        self.defaulthost.as_ref().and_then(|d| {
-            self.virtualhosts
-                .iter()
-                .find(|f| f.hostname == d.0.as_str())
-        })
+        self.default_host
+            .as_ref()
+            .and_then(|hostname| self.hosts.get(hostname))
     }
 }
 
@@ -95,7 +135,7 @@ impl Action {
 pub enum StatusAction {
     Static { r#static: StaticAction },
     Forward { forward: ForwardAction },
-    Modify { modify: ModifyAction },
+    // Modify { modify: ModifyAction },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -120,9 +160,9 @@ pub struct StaticAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForwardAction(pub ServerAddr);
 
-// todo big work
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ModifyAction {}
+// // todo big work
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct ModifyAction {}
 
 pub fn load() -> Result<Config> {
     let file = File::open(CONFIG_PATH);

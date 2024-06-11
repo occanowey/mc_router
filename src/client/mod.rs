@@ -13,7 +13,7 @@ use tracing::{debug, error, field, info, info_span, trace};
 mod error;
 
 use crate::{
-    config::{Action, ForwardAction, LoginAction, ServerAddr, StatusAction},
+    config::{Action, ForwardAction, Hostname, LoginAction, ServerAddr, StatusAction},
     CONFIG,
 };
 use error::ClientError;
@@ -50,7 +50,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
     info!("New client has connected");
 
     debug!("Finding action for {}", handshake.server_address);
-    let action = match find_action(&handshake.server_address) {
+    let action = match find_action(&handshake.server_address.parse().unwrap()) {
         Some(action) => action,
         None => {
             info!("No action found for {}", handshake.server_address);
@@ -116,8 +116,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError>
                 } => {
                     info!("Forwarding status to {target}");
                     handle_forward_action(client, addr, &handshake, None, target)?;
-                }
-                StatusAction::Modify { modify: _ } => todo!(),
+                } // StatusAction::Modify { modify: _ } => todo!(),
             }
         }
         handshaking::NextState::Login => {
@@ -174,15 +173,14 @@ fn handle_forward_action<S: NetworkState>(
     blocking_proxy(&addr, client.into_stream(), server)
 }
 
-fn find_action(hostname: &str) -> Option<Action> {
+fn find_action(hostname: &Hostname) -> Option<Action> {
     let config = CONFIG.read().unwrap();
 
     config
-        .virtualhosts
-        .iter()
-        .find(|f| f.hostname == hostname)
+        .hosts
+        .get(hostname)
         .or_else(|| config.get_default_host())
-        .map(|h| &h.action)
+        .map(|host| &host.action)
         .cloned()
 }
 
