@@ -4,7 +4,6 @@ mod serveraddr;
 pub use hostname::Hostname;
 pub use serveraddr::ServerAddr;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -164,7 +163,7 @@ pub struct ForwardAction(pub ServerAddr);
 // #[derive(Serialize, Deserialize, Debug, Clone)]
 // pub struct ModifyAction {}
 
-pub fn load() -> Result<Config> {
+pub fn load() -> color_eyre::Result<Config> {
     let file = File::open(CONFIG_PATH);
 
     if let Ok(file) = file {
@@ -182,7 +181,7 @@ pub fn load() -> Result<Config> {
     }
 }
 
-pub fn save(config: &Config) -> Result<()> {
+pub fn save(config: &Config) -> color_eyre::Result<()> {
     fs::write(CONFIG_PATH, serde_yaml::to_string(config)?)?;
     Ok(())
 }

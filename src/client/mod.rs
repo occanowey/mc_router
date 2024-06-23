@@ -10,13 +10,10 @@ use mcproto::{
 };
 use tracing::{debug, error, field, info, info_span, trace};
 
-mod error;
-
 use crate::{
     config::{Action, ForwardAction, Hostname, LoginAction, ServerAddr, StatusAction},
     CONFIG,
 };
-use error::ClientError;
 
 pub type NetworkHandler<S> = mcproto::net::NetworkHandler<Server, S>;
 
@@ -28,18 +25,23 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
             let _enter = span.enter();
 
             match handle_client(stream, addr) {
-                Ok(_) | Err(ClientError::Proto(mcproto::error::Error::UnexpectedDisconect(_))) => {
+                Ok(_) => {
                     info!("Connection closed");
                 }
-                Err(err) => {
-                    error!(%err, "Error while handling connection");
-                }
+                Err(err) => match err.downcast_ref::<mcproto::error::Error>() {
+                    Some(mcproto::error::Error::UnexpectedDisconect(err)) => {
+                        info!("Connection closed: {}", err.kind());
+                    }
+                    _other => {
+                        error!(%err, "Error while handling connection");
+                    }
+                },
             }
         })
         .unwrap();
 }
 
-fn handle_client(stream: TcpStream, addr: SocketAddr) -> Result<(), ClientError> {
+fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
     debug!("Accepted connection");
 
     stream.set_nodelay(true)?;
@@ -160,7 +162,7 @@ fn handle_forward_action<S: NetworkState>(
     handshake: &handshaking::Handshake,
     login_start: Option<&login::LoginStart>,
     target: ServerAddr,
-) -> Result<(), ClientError> {
+) -> color_eyre::Result<()> {
     // todo log
     let mut server = connect_to_server(&target)?;
 
@@ -184,7 +186,7 @@ fn find_action(hostname: &Hostname) -> Option<Action> {
         .cloned()
 }
 
-fn connect_to_server(addr: &ServerAddr) -> Result<TcpStream, ClientError> {
+fn connect_to_server(addr: &ServerAddr) -> color_eyre::Result<TcpStream> {
     debug!("Connecting to {:?}", addr);
     #[allow(clippy::match_single_binding)]
     Ok(match TcpStream::connect(addr) {
@@ -203,7 +205,7 @@ fn blocking_proxy(
     client_addr: &SocketAddr,
     client_stream: TcpStream,
     server: TcpStream,
-) -> Result<(), ClientError> {
+) -> color_eyre::Result<()> {
     let client_read = client_stream;
     let client_write = client_read.try_clone()?;
 
@@ -231,10 +233,10 @@ fn spawn_copy_thread(
     name: String,
     mut from: TcpStream,
     mut to: TcpStream,
-) -> Result<thread::JoinHandle<()>, io::Error> {
-    thread::Builder::new().name(name).spawn(move || {
-        // Ignore all errors we recieve
+) -> color_eyre::Result<thread::JoinHandle<()>> {
+    Ok(thread::Builder::new().name(name).spawn(move || {
+        // todo: don't ignore all errors we recieve
         let _ = io::copy(&mut from, &mut to);
         let _ = to.shutdown(Shutdown::Both);
-    })
+    })?)
 }
