@@ -1,12 +1,17 @@
 use std::{
-    io,
+    io::{self, Write},
     net::{Shutdown, SocketAddr, TcpStream},
     thread,
 };
 
 use mcproto::{
-    net::{handler_from_stream, side::Server, state::NetworkState},
-    packet::{handshaking, login, status, PacketWrite},
+    self, handshake, role,
+    sio::{self, StdIoConnection},
+    state,
+    versions::latest::{
+        packets::{login, status},
+        states,
+    },
 };
 use tracing::{debug, error, field, info, info_span, trace};
 
@@ -14,8 +19,6 @@ use crate::{
     config::{Action, ForwardAction, Hostname, LoginAction, ServerAddr, StatusAction},
     CONFIG,
 };
-
-pub type NetworkHandler<S> = mcproto::net::NetworkHandler<Server, S>;
 
 pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
     thread::Builder::new()
@@ -29,6 +32,9 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
                     info!("Connection closed");
                 }
                 Err(err) => match err.downcast_ref::<mcproto::error::Error>() {
+                    Some(mcproto::error::Error::StreamShutdown) => {
+                        info!("Connection closed");
+                    }
                     Some(mcproto::error::Error::UnexpectedDisconect(err)) => {
                         info!("Connection closed: {}", err.kind());
                     }
@@ -44,10 +50,9 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
 fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
     debug!("Accepted connection");
 
-    stream.set_nodelay(true)?;
-    let mut client = handler_from_stream(stream)?;
+    let mut sioc = sio::accept_stdio_stream::<role::Server, handshake::HandshakingState>(stream)?;
 
-    let handshake = client.read::<handshaking::Handshake>()?;
+    let handshake: handshake::Handshake = sioc.expect_next_packet()?;
     trace!(?handshake, "Recieved handshake packet");
     info!("New client has connected");
 
@@ -56,15 +61,15 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
         Some(action) => action,
         None => {
             info!("No action found for {}", handshake.server_address);
-            client.close()?;
+            sioc.shutdown(Shutdown::Both)?;
             return Ok(());
         }
     };
     debug!(hostname = %handshake.server_address, ?action, "Found action");
 
     match handshake.next_state {
-        handshaking::NextState::Status => {
-            let mut client = client.status();
+        handshake::NextState::Status => {
+            let mut sioc = sioc.next_state::<states::StatusState>();
             debug!("State changed to status");
 
             match action.get_status_action() {
@@ -79,11 +84,11 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
                     #[allow(clippy::or_fun_call)]
                     let description = r#static.description.unwrap_or("A Minecraft Server".into());
 
-                    let request = client.read::<status::StatusRequest>()?;
+                    let request: status::c2s::StatusRequest = sioc.expect_next_packet()?;
                     trace!(?request, "Recieved request packet");
 
                     info!("Sending status");
-                    client.write(status::StatusResponse {
+                    sioc.write_packet(status::s2c::StatusResponse {
                         // TODO: have serde do this for me
                         response: format!(
                             r#"{{
@@ -104,27 +109,27 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
                     })?;
 
                     // attempt ping/pong
-                    let ping: status::PingRequest = client.read()?;
+                    let ping: status::c2s::PingRequest = sioc.expect_next_packet()?;
                     trace!(?ping, "Recieved ping packet");
-                    client.write(status::PingResponse {
+                    sioc.write_packet(status::s2c::PingResponse {
                         payload: ping.payload,
                     })?;
 
                     trace!("Closing connection");
-                    client.close()?;
+                    sioc.shutdown(Shutdown::Both)?;
                 }
                 StatusAction::Forward {
                     forward: ForwardAction(target),
                 } => {
                     info!("Forwarding status to {target}");
-                    handle_forward_action(client, addr, &handshake, None, target)?;
+                    handle_forward_action(sioc, addr, handshake, None, target)?;
                 } // StatusAction::Modify { modify: _ } => todo!(),
             }
         }
-        handshaking::NextState::Login => {
-            let mut client = client.login();
+        handshake::NextState::Login => {
+            let mut sioc = sioc.next_state::<states::LoginState>();
             debug!("State changed to login");
-            let login_start = client.read::<login::LoginStart>()?;
+            let login_start: login::c2s::LoginStart = sioc.expect_next_packet()?;
             tracing::Span::current().record("username", &login_start.username);
             trace!(?login_start, "Recieved login start packet");
 
@@ -134,45 +139,62 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
                     let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
                     info!("Sending disconnect");
-                    client.write(login::Disconnect {
+                    sioc.write_packet(login::s2c::Disconnect {
                         reason: format!(r#"{{"text": "{}"}}"#, kick_message),
                     })?;
 
                     trace!("Closing connection");
-                    client.close()?;
+                    sioc.shutdown(Shutdown::Both)?;
                 }
                 LoginAction::Forward {
                     forward: ForwardAction(target),
                 } => {
                     info!("forwarding login to {target}");
-                    handle_forward_action(client, addr, &handshake, Some(&login_start), target)?;
+                    handle_forward_action(sioc, addr, handshake, Some(login_start), target)?;
                 }
             }
         }
 
-        handshaking::NextState::Unknown(other) => unreachable!("unknown next state: {}", other),
+        handshake::NextState::Transfer => {
+            todo!("transfer state");
+        }
+
+        handshake::NextState::Unknown(other) => {
+            unreachable!("unknown next state: {}", other)
+        }
     }
 
     Ok(())
 }
 
-fn handle_forward_action<S: NetworkState>(
-    client: NetworkHandler<S>,
+fn handle_forward_action<State: state::ProtocolState>(
+    client: StdIoConnection<role::Server, State>,
     addr: SocketAddr,
-    handshake: &handshaking::Handshake,
-    login_start: Option<&login::LoginStart>,
+    handshake: handshake::Handshake,
+    login_start: Option<login::c2s::LoginStart>,
     target: ServerAddr,
 ) -> color_eyre::Result<()> {
     // todo log
-    let mut server = connect_to_server(&target)?;
+    debug!("Connecting to {:?}", target);
+    let mut server =
+        sio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(&target)?;
 
     // TODO: add config option to re write handshake to include target hostname/port
-    handshake.write(&mut server)?;
-    if let Some(login_start) = login_start {
-        login_start.write(&mut server)?;
-    }
+    server.write_packet(handshake)?;
+    let (server_bytes, mut server) = if let Some(login_start) = login_start {
+        let mut server = server.next_state::<states::LoginState>();
+        server.write_packet(login_start)?;
+        server.into_bytes_stream()
+    } else {
+        server.into_bytes_stream()
+    };
 
-    blocking_proxy(&addr, client.into_stream(), server)
+    let (client_bytes, mut client) = client.into_bytes_stream();
+
+    client.write_all(&server_bytes)?;
+    server.write_all(&client_bytes)?;
+
+    blocking_proxy(&addr, client, server)
 }
 
 fn find_action(hostname: &Hostname) -> Option<Action> {
@@ -184,21 +206,6 @@ fn find_action(hostname: &Hostname) -> Option<Action> {
         .or_else(|| config.get_default_host())
         .map(|host| &host.action)
         .cloned()
-}
-
-fn connect_to_server(addr: &ServerAddr) -> color_eyre::Result<TcpStream> {
-    debug!("Connecting to {:?}", addr);
-    #[allow(clippy::match_single_binding)]
-    Ok(match TcpStream::connect(addr) {
-        // don't really remember why this was a thing
-
-        // Err(ref e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-        //     info!("Could not connect to server, closing client connection.");
-        //     return Ok(());
-        // }
-        //
-        res => res,
-    }?)
 }
 
 fn blocking_proxy(
