@@ -16,7 +16,7 @@ use std::{
 
 use client::spawn_client_handler;
 use config::Config;
-use tracing::info;
+use tracing::{error, info};
 
 lazy_static! {
     static ref CONFIG: RwLock<Config> = RwLock::new(Default::default());
@@ -57,7 +57,13 @@ fn run_server(addr: SocketAddr) {
     info!("Listening on {}", addr);
 
     loop {
-        let (stream, addr) = listener.accept().unwrap();
-        spawn_client_handler(stream, addr);
+        match listener.accept() {
+            Ok((stream, addr)) => {
+                spawn_client_handler(stream, addr);
+            }
+            Err(err) => {
+                error!(error = ?err, "Error accepting connection, {}", err);
+            }
+        }
     }
 }
