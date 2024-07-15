@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Write},
+    io,
     net::{Shutdown, SocketAddr, TcpStream},
     thread,
 };
@@ -7,18 +7,17 @@ use std::{
 use mcproto::{
     self, handshake, role,
     sio::{self, StdIoConnection},
-    state,
-    versions::latest::{
-        packets::{login, status},
-        states,
-    },
 };
-use tracing::{debug, error, field, info, info_span, trace};
+use multi_version::Protocol;
+use tracing::{debug, error, field, info, info_span, trace, warn};
 
 use crate::{
-    config::{Action, ForwardAction, Hostname, LoginAction, ServerAddr, StatusAction},
+    config::{Action, ForwardAction, Hostname, LoginAction, StatusAction},
     CONFIG,
 };
+
+mod multi_version;
+mod version_impls;
 
 pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
     thread::Builder::new()
@@ -27,7 +26,7 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
             let span = info_span!("client", %addr, username = field::Empty);
             let _enter = span.enter();
 
-            match handle_client(stream, addr) {
+            match handshake_client(stream, addr) {
                 Ok(_) => {
                     info!("Connection closed");
                 }
@@ -47,7 +46,7 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
         .unwrap();
 }
 
-fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
+fn handshake_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
     debug!("Accepted connection");
 
     let mut sioc = sio::accept_stdio_stream::<role::Server, handshake::HandshakingState>(stream)?;
@@ -56,12 +55,76 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
     trace!(?handshake, "Recieved handshake packet");
     info!("New client has connected");
 
+    match handshake.protocol_version {
+        // 3 => handle_client::<version_impls::ProtocolV3>(sioc, handshake, addr),
+        4 => handle_client::<version_impls::ProtocolV4>(sioc, handshake, addr),
+        5 => handle_client::<version_impls::ProtocolV5>(sioc, handshake, addr),
+        47 => handle_client::<version_impls::ProtocolV47>(sioc, handshake, addr),
+        107 => handle_client::<version_impls::ProtocolV107>(sioc, handshake, addr),
+        108 => handle_client::<version_impls::ProtocolV108>(sioc, handshake, addr),
+        109 => handle_client::<version_impls::ProtocolV109>(sioc, handshake, addr),
+        110 => handle_client::<version_impls::ProtocolV110>(sioc, handshake, addr),
+        210 => handle_client::<version_impls::ProtocolV210>(sioc, handshake, addr),
+        315 => handle_client::<version_impls::ProtocolV315>(sioc, handshake, addr),
+        316 => handle_client::<version_impls::ProtocolV316>(sioc, handshake, addr),
+        335 => handle_client::<version_impls::ProtocolV335>(sioc, handshake, addr),
+        338 => handle_client::<version_impls::ProtocolV338>(sioc, handshake, addr),
+        340 => handle_client::<version_impls::ProtocolV340>(sioc, handshake, addr),
+        393 => handle_client::<version_impls::ProtocolV393>(sioc, handshake, addr),
+        401 => handle_client::<version_impls::ProtocolV401>(sioc, handshake, addr),
+        404 => handle_client::<version_impls::ProtocolV404>(sioc, handshake, addr),
+        477 => handle_client::<version_impls::ProtocolV477>(sioc, handshake, addr),
+        480 => handle_client::<version_impls::ProtocolV480>(sioc, handshake, addr),
+        485 => handle_client::<version_impls::ProtocolV485>(sioc, handshake, addr),
+        490 => handle_client::<version_impls::ProtocolV490>(sioc, handshake, addr),
+        498 => handle_client::<version_impls::ProtocolV498>(sioc, handshake, addr),
+        573 => handle_client::<version_impls::ProtocolV573>(sioc, handshake, addr),
+        575 => handle_client::<version_impls::ProtocolV575>(sioc, handshake, addr),
+        578 => handle_client::<version_impls::ProtocolV578>(sioc, handshake, addr),
+        735 => handle_client::<version_impls::ProtocolV735>(sioc, handshake, addr),
+        736 => handle_client::<version_impls::ProtocolV736>(sioc, handshake, addr),
+        751 => handle_client::<version_impls::ProtocolV751>(sioc, handshake, addr),
+        753 => handle_client::<version_impls::ProtocolV753>(sioc, handshake, addr),
+        754 => handle_client::<version_impls::ProtocolV754>(sioc, handshake, addr),
+        755 => handle_client::<version_impls::ProtocolV755>(sioc, handshake, addr),
+        756 => handle_client::<version_impls::ProtocolV756>(sioc, handshake, addr),
+        757 => handle_client::<version_impls::ProtocolV757>(sioc, handshake, addr),
+        758 => handle_client::<version_impls::ProtocolV758>(sioc, handshake, addr),
+        759 => handle_client::<version_impls::ProtocolV759>(sioc, handshake, addr),
+        760 => handle_client::<version_impls::ProtocolV760>(sioc, handshake, addr),
+        761 => handle_client::<version_impls::ProtocolV761>(sioc, handshake, addr),
+        762 => handle_client::<version_impls::ProtocolV762>(sioc, handshake, addr),
+        763 => handle_client::<version_impls::ProtocolV763>(sioc, handshake, addr),
+        764 => handle_client::<version_impls::ProtocolV764>(sioc, handshake, addr),
+        765 => handle_client::<version_impls::ProtocolV765>(sioc, handshake, addr),
+        766 => handle_client::<version_impls::ProtocolV766>(sioc, handshake, addr),
+        767 => handle_client::<version_impls::ProtocolV767>(sioc, handshake, addr),
+
+        other => {
+            warn!("unknown protocol version: {}, defaulting to latest.", other);
+
+            handle_client::<version_impls::ProtocolV767>(sioc, handshake, addr)
+        }
+    }
+}
+
+fn handle_client<P: Protocol>(
+    connection: StdIoConnection<role::Server, handshake::HandshakingState>,
+    handshake: handshake::Handshake,
+    addr: SocketAddr,
+) -> color_eyre::Result<()>
+where
+    <P::StatusState as mcproto::state::RoleStatePackets<mcproto::role::Server>>::RecvPacket:
+        mcproto::packet::PacketFromIdBody,
+    <P::LoginState as mcproto::state::RoleStatePackets<mcproto::role::Server>>::RecvPacket:
+        mcproto::packet::PacketFromIdBody,
+{
     debug!("Finding action for {}", handshake.server_address);
     let action = match find_action(&handshake.server_address.parse().unwrap()) {
         Some(action) => action,
         None => {
             info!("No action found for {}", handshake.server_address);
-            sioc.shutdown(Shutdown::Both)?;
+            connection.shutdown(Shutdown::Both)?;
             return Ok(());
         }
     };
@@ -69,7 +132,7 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
 
     match handshake.next_state {
         handshake::NextState::Status => {
-            let mut sioc = sioc.next_state::<states::StatusState>();
+            let mut connection = P::status_state(connection);
             debug!("State changed to status");
 
             match action.get_status_action() {
@@ -79,57 +142,51 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
                     let protocol_version = r#static
                         .protocol_version
                         .unwrap_or(handshake.protocol_version);
-                    let cur_players = r#static.cur_players.unwrap_or(0);
+                    let online_players = r#static.cur_players.unwrap_or(0);
                     let max_players = r#static.max_players.unwrap_or(20);
                     #[allow(clippy::or_fun_call)]
                     let description = r#static.description.unwrap_or("A Minecraft Server".into());
 
-                    let request: status::c2s::StatusRequest = sioc.expect_next_packet()?;
+                    let request = P::read_status_request(&mut connection)?;
                     trace!(?request, "Recieved request packet");
 
                     info!("Sending status");
-                    sioc.write_packet(status::s2c::StatusResponse {
-                        // TODO: have serde do this for me
-                        response: format!(
-                            r#"{{
-                                "version": {{
-                                    "name": "{}",
-                                    "protocol": {}
-                                }},
-                                "players": {{
-                                    "max": {},
-                                    "online": {}
-                                }},
-                                "description": {{
-                                    "text": "{}"
-                                }}
-                            }}"#,
-                            version_name, protocol_version, max_players, cur_players, description
-                        ),
-                    })?;
+                    P::write_status_response(
+                        &mut connection,
+                        multi_version::StatusResponse {
+                            version_name: version_name.clone(),
+                            protocol_version,
+                            max_players,
+                            online_players,
+                            description: description.clone(),
+                        },
+                    )?;
 
                     // attempt ping/pong
-                    let ping: status::c2s::PingRequest = sioc.expect_next_packet()?;
+                    let ping = P::read_ping_request(&mut connection)?;
                     trace!(?ping, "Recieved ping packet");
-                    sioc.write_packet(status::s2c::PingResponse {
-                        payload: ping.payload,
-                    })?;
+                    P::write_ping_response(
+                        &mut connection,
+                        multi_version::PingResponse {
+                            payload: ping.payload,
+                        },
+                    )?;
 
                     trace!("Closing connection");
-                    sioc.shutdown(Shutdown::Both)?;
+                    connection.shutdown(Shutdown::Both)?;
                 }
                 StatusAction::Forward {
                     forward: ForwardAction(target),
                 } => {
                     info!("Forwarding status to {target}");
-                    handle_forward_action(sioc, addr, handshake, None, target)?;
+                    P::forward_status(connection, addr, handshake, target)?;
                 } // StatusAction::Modify { modify: _ } => todo!(),
             }
         }
         handshake::NextState::Login => {
-            let mut sioc = sioc.next_state::<states::LoginState>();
+            let mut connection = P::login_state(connection);
             debug!("State changed to login");
-            let login_start: login::c2s::LoginStart = sioc.expect_next_packet()?;
+            let login_start = P::read_login_start(&mut connection)?;
             tracing::Span::current().record("username", &login_start.username);
             trace!(?login_start, "Recieved login start packet");
 
@@ -139,18 +196,21 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
                     let kick_message = r#static.kick_message.unwrap_or("Disconnected".into());
 
                     info!("Sending disconnect");
-                    sioc.write_packet(login::s2c::Disconnect {
-                        reason: format!(r#"{{"text": "{}"}}"#, kick_message),
-                    })?;
+                    P::write_disconnect(
+                        &mut connection,
+                        multi_version::Disconnect {
+                            reason: kick_message,
+                        },
+                    )?;
 
                     trace!("Closing connection");
-                    sioc.shutdown(Shutdown::Both)?;
+                    connection.shutdown(Shutdown::Both)?;
                 }
                 LoginAction::Forward {
                     forward: ForwardAction(target),
                 } => {
                     info!("forwarding login to {target}");
-                    handle_forward_action(sioc, addr, handshake, Some(login_start), target)?;
+                    P::forward_login(connection, addr, handshake, login_start, target)?;
                 }
             }
         }
@@ -165,36 +225,6 @@ fn handle_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> 
     }
 
     Ok(())
-}
-
-fn handle_forward_action<State: state::ProtocolState>(
-    client: StdIoConnection<role::Server, State>,
-    addr: SocketAddr,
-    handshake: handshake::Handshake,
-    login_start: Option<login::c2s::LoginStart>,
-    target: ServerAddr,
-) -> color_eyre::Result<()> {
-    // todo log
-    debug!("Connecting to {:?}", target);
-    let mut server =
-        sio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(&target)?;
-
-    // TODO: add config option to re write handshake to include target hostname/port
-    server.write_packet(handshake)?;
-    let (server_bytes, mut server) = if let Some(login_start) = login_start {
-        let mut server = server.next_state::<states::LoginState>();
-        server.write_packet(login_start)?;
-        server.into_bytes_stream()
-    } else {
-        server.into_bytes_stream()
-    };
-
-    let (client_bytes, mut client) = client.into_bytes_stream();
-
-    client.write_all(&server_bytes)?;
-    server.write_all(&client_bytes)?;
-
-    blocking_proxy(&addr, client, server)
 }
 
 fn find_action(hostname: &Hostname) -> Option<Action> {

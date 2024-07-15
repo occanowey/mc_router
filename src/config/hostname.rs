@@ -18,7 +18,7 @@ impl FromStr for Hostname {
         let valid_hostname = hostname_validator::is_valid(hostname);
 
         if !valid_ip && !valid_hostname {
-            return Err("hostname is invalid".to_owned());
+            return Err(format!("hostname {hostname:?} is invalid"));
         }
 
         Ok(Hostname(hostname.to_owned()))
