@@ -6,7 +6,7 @@ use std::{
 
 use mcproto::{
     self, handshake, role,
-    sio::{self, StdIoConnection},
+    stdio::{self, StdIoConnection},
 };
 use multi_version::Protocol;
 use tracing::{debug, error, field, info, info_span, trace, warn};
@@ -49,14 +49,14 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
 fn handshake_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
     debug!("Accepted connection");
 
-    let mut sioc = sio::accept_stdio_stream::<role::Server, handshake::HandshakingState>(stream)?;
+    let mut sioc = stdio::accept_stdio_stream::<role::Server, handshake::HandshakingState>(stream)?;
 
     let handshake: handshake::Handshake = sioc.expect_next_packet()?;
     trace!(?handshake, "Recieved handshake packet");
     info!("New client has connected");
 
     match handshake.protocol_version {
-        // 3 => handle_client::<version_impls::ProtocolV3>(sioc, handshake, addr),
+        3 => handle_client::<version_impls::ProtocolV3>(sioc, handshake, addr),
         4 => handle_client::<version_impls::ProtocolV4>(sioc, handshake, addr),
         5 => handle_client::<version_impls::ProtocolV5>(sioc, handshake, addr),
         47 => handle_client::<version_impls::ProtocolV47>(sioc, handshake, addr),

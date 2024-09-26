@@ -64,8 +64,8 @@ macro_rules! impl_protocol_new {
 //     }
 // }
 
-impl From<mcproto::versions::v4::packets::status::c2s::Request> for StatusRequest {
-    fn from(_: mcproto::versions::v4::packets::status::c2s::Request) -> Self {
+impl From<mcproto::versions::v3::packets::status::c2s::Request> for StatusRequest {
+    fn from(_: mcproto::versions::v3::packets::status::c2s::Request) -> Self {
         Self
     }
 }
@@ -87,7 +87,7 @@ impl From<mcproto::versions::v759::packets::status::c2s::StatusRequest> for Stat
 //     }
 // }
 
-impl From<StatusResponse> for mcproto::versions::v4::packets::status::s2c::Response {
+impl From<StatusResponse> for mcproto::versions::v3::packets::status::s2c::Response {
     fn from(value: StatusResponse) -> Self {
         Self {
             response: value.to_json(),
@@ -114,8 +114,8 @@ impl From<StatusResponse> for mcproto::versions::v759::packets::status::s2c::Sta
 //     }
 // }
 
-impl From<mcproto::versions::v4::packets::status::c2s::Ping> for PingRequest {
-    fn from(value: mcproto::versions::v4::packets::status::c2s::Ping) -> Self {
+impl From<mcproto::versions::v3::packets::status::c2s::Ping> for PingRequest {
+    fn from(value: mcproto::versions::v3::packets::status::c2s::Ping) -> Self {
         Self {
             payload: value.payload,
         }
@@ -141,7 +141,7 @@ impl From<mcproto::versions::v759::packets::status::c2s::PingRequest> for PingRe
 //     }
 // }
 
-impl From<PingResponse> for mcproto::versions::v4::packets::status::s2c::Pong {
+impl From<PingResponse> for mcproto::versions::v3::packets::status::s2c::Pong {
     fn from(value: PingResponse) -> Self {
         Self {
             payload: value.payload,
@@ -168,8 +168,8 @@ impl From<PingResponse> for mcproto::versions::v759::packets::status::s2c::PingR
 //     }
 // }
 
-impl From<mcproto::versions::v4::packets::login::c2s::LoginStart> for LoginStart {
-    fn from(value: mcproto::versions::v4::packets::login::c2s::LoginStart) -> Self {
+impl From<mcproto::versions::v3::packets::login::c2s::LoginStart> for LoginStart {
+    fn from(value: mcproto::versions::v3::packets::login::c2s::LoginStart) -> Self {
         Self {
             username: value.username,
             uuid: None,
@@ -205,16 +205,7 @@ impl From<mcproto::versions::v764::packets::login::c2s::LoginStart> for LoginSta
     }
 }
 
-// impl From<LoginStart> for mcproto::versions::v3::packets::login::c2s::LoginStart {
-//     fn from(value: LoginStart) -> Self {
-//         Self {
-//             username: value.username,
-//             uuid: Some(value.uuid),
-//         }
-//     }
-// }
-
-impl From<LoginStart> for mcproto::versions::v4::packets::login::c2s::LoginStart {
+impl From<LoginStart> for mcproto::versions::v3::packets::login::c2s::LoginStart {
     fn from(value: LoginStart) -> Self {
         Self {
             username: value.username,
@@ -249,13 +240,7 @@ impl From<LoginStart> for mcproto::versions::v764::packets::login::c2s::LoginSta
     }
 }
 
-// impl From<Disconnect> for mcproto::versions::v3::packets::login::s2c::Disconnect {
-//     fn from(value: Disconnect) -> Self {
-//         todo!()
-//     }
-// }
-
-impl From<Disconnect> for mcproto::versions::v4::packets::login::s2c::Disconnect {
+impl From<Disconnect> for mcproto::versions::v3::packets::login::s2c::Disconnect {
     fn from(value: Disconnect) -> Self {
         Self {
             reason: value.to_json(),
@@ -263,7 +248,7 @@ impl From<Disconnect> for mcproto::versions::v4::packets::login::s2c::Disconnect
     }
 }
 
-// impl_protocol_old!(ProtocolV3(3), v3);
+impl_protocol_old!(ProtocolV3(3), v3);
 impl_protocol_old!(ProtocolV4(4), v4);
 impl_protocol_old!(ProtocolV5(5), v5);
 impl_protocol_old!(ProtocolV47(47), v47);

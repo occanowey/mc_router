@@ -4,7 +4,7 @@ use std::{
     net::SocketAddr,
 };
 
-use mcproto::{error, handshake, packet, role, sio::StdIoConnection, state, uuid::Uuid};
+use mcproto::{error, handshake, packet, role, state, stdio::StdIoConnection, uuid::Uuid};
 use tracing::debug;
 
 use crate::{client::blocking_proxy, config::ServerAddr};
@@ -184,7 +184,7 @@ where
         // todo log
         debug!("Connecting to {:?}", target);
         let mut server =
-            mcproto::sio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(
+            mcproto::stdio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(
                 &target,
             )?;
 
@@ -234,7 +234,7 @@ where
         // todo log
         debug!("Connecting to {:?}", target);
         let mut server =
-            mcproto::sio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(
+            mcproto::stdio::connect_stdio_stream::<_, role::Client, handshake::HandshakingState>(
                 &target,
             )?;
 

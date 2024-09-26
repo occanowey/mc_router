@@ -447,7 +447,7 @@ dependencies = [
 [[package]]
 name = "mcproto"
 version = "0.2.0"
-source = "git+https://github.com/occanowey/mcproto?rev=ae7b466#ae7b466feec466febc2bf010b5ef22a75b31a04c"
+source = "git+https://github.com/occanowey/mcproto?rev=bd3e32f#bd3e32febe82ca6084488975be4b74b608605587"
 dependencies = [
  "aes",
  "bytes",
@@ -530,7 +530,7 @@ checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
 [[package]]
 name = "packet_derive"
 version = "0.1.0"
-source = "git+https://github.com/occanowey/mcproto?rev=ae7b466#ae7b466feec466febc2bf010b5ef22a75b31a04c"
+source = "git+https://github.com/occanowey/mcproto?rev=bd3e32f#bd3e32febe82ca6084488975be4b74b608605587"
 dependencies = [
  "darling",
  "proc-macro2",
