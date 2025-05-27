@@ -173,6 +173,7 @@ impl From<mcproto::versions::v3::packets::login::c2s::LoginStart> for LoginStart
         Self {
             username: value.username,
             uuid: None,
+            signature_data: None,
         }
     }
 }
@@ -183,6 +184,17 @@ impl From<mcproto::versions::v759::packets::login::c2s::LoginStart> for LoginSta
             username: value.username,
             // need to get uuid from mojang after auth
             uuid: None,
+            signature_data: value.signature_data,
+        }
+    }
+}
+
+impl From<mcproto::versions::v760::packets::login::c2s::LoginStart> for LoginStart {
+    fn from(value: mcproto::versions::v760::packets::login::c2s::LoginStart) -> Self {
+        Self {
+            username: value.username,
+            uuid: value.uuid,
+            signature_data: value.signature_data,
         }
     }
 }
@@ -192,6 +204,7 @@ impl From<mcproto::versions::v761::packets::login::c2s::LoginStart> for LoginSta
         Self {
             username: value.username,
             uuid: value.uuid,
+            signature_data: None,
         }
     }
 }
@@ -201,6 +214,7 @@ impl From<mcproto::versions::v764::packets::login::c2s::LoginStart> for LoginSta
         Self {
             username: value.username,
             uuid: Some(value.uuid),
+            signature_data: None,
         }
     }
 }
@@ -217,7 +231,17 @@ impl From<LoginStart> for mcproto::versions::v759::packets::login::c2s::LoginSta
     fn from(value: LoginStart) -> Self {
         Self {
             username: value.username,
-            signature_data: None,
+            signature_data: value.signature_data,
+        }
+    }
+}
+
+impl From<LoginStart> for mcproto::versions::v760::packets::login::c2s::LoginStart {
+    fn from(value: LoginStart) -> Self {
+        Self {
+            username: value.username,
+            signature_data: value.signature_data,
+            uuid: value.uuid,
         }
     }
 }

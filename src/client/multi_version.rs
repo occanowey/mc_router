@@ -88,6 +88,12 @@ where
 pub struct LoginStart {
     pub username: String,
     pub uuid: Option<Uuid>,
+
+    // this is meh
+    // TODO: figure out a better way to pass extra data for certain packets
+    // TODO:   maybe some kinda type map and erase all specific fields?
+    pub signature_data:
+        Option<mcproto::versions::v760::packets::login::c2s::login_start::SignatureData>,
 }
 
 #[derive(Debug)]
