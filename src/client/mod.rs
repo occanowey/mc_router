@@ -16,6 +16,7 @@ use crate::{
     CONFIG,
 };
 
+mod legacy;
 mod multi_version;
 mod version_impls;
 
@@ -46,8 +47,12 @@ pub fn spawn_client_handler(stream: TcpStream, addr: SocketAddr) {
         .unwrap();
 }
 
-fn handshake_client(stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
+fn handshake_client(mut stream: TcpStream, addr: SocketAddr) -> color_eyre::Result<()> {
     debug!("Accepted connection");
+
+    if legacy::maybe_handle_legacy_status(&mut stream)? {
+        return Ok(());
+    }
 
     let mut sioc = stdio::accept_stdio_stream::<role::Server, handshake::HandshakingState>(stream)?;
 

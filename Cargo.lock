@@ -435,6 +435,7 @@ dependencies = [
 name = "mc_router"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "chrono",
  "color-eyre",
  "git-version",
