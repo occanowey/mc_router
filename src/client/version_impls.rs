@@ -1,3 +1,5 @@
+use type_map::concurrent::TypeMap;
+
 use super::multi_version::Protocol;
 use super::multi_version::{Disconnect, LoginStart, LoginState};
 use super::multi_version::{PingRequest, PingResponse, StatusRequest, StatusResponse, StatusState};
@@ -58,12 +60,6 @@ macro_rules! impl_protocol_new {
 // -----------------------------------------------------------------------------------
 //
 
-// impl From<mcproto::versions::v3::packets::status::c2s::Request> for StatusRequest {
-//     fn from(_: mcproto::versions::v3::packets::status::c2s::Request) -> Self {
-//         todo!()
-//     }
-// }
-
 impl From<mcproto::versions::v3::packets::status::c2s::Request> for StatusRequest {
     fn from(_: mcproto::versions::v3::packets::status::c2s::Request) -> Self {
         Self
@@ -107,12 +103,6 @@ impl From<StatusResponse> for mcproto::versions::v759::packets::status::s2c::Sta
 // Ping Request
 // -----------------------------------------------------------------------------------
 //
-
-// impl From<mcproto::versions::v3::packets::status::c2s::Ping> for PingRequest {
-//     fn from(value: mcproto::versions::v3::packets::status::c2s::Ping) -> Self {
-//         todo!()
-//     }
-// }
 
 impl From<mcproto::versions::v3::packets::status::c2s::Ping> for PingRequest {
     fn from(value: mcproto::versions::v3::packets::status::c2s::Ping) -> Self {
@@ -173,28 +163,40 @@ impl From<mcproto::versions::v3::packets::login::c2s::LoginStart> for LoginStart
         Self {
             username: value.username,
             uuid: None,
-            signature_data: None,
+            extra_fields: TypeMap::new(),
         }
     }
 }
 
 impl From<mcproto::versions::v759::packets::login::c2s::LoginStart> for LoginStart {
     fn from(value: mcproto::versions::v759::packets::login::c2s::LoginStart) -> Self {
+        let mut extra_fields = TypeMap::new();
+
+        if let Some(signature_data) = value.signature_data {
+            extra_fields.insert(signature_data);
+        }
+
         Self {
             username: value.username,
             // need to get uuid from mojang after auth
             uuid: None,
-            signature_data: value.signature_data,
+            extra_fields,
         }
     }
 }
 
 impl From<mcproto::versions::v760::packets::login::c2s::LoginStart> for LoginStart {
     fn from(value: mcproto::versions::v760::packets::login::c2s::LoginStart) -> Self {
+        let mut extra_fields = TypeMap::new();
+
+        if let Some(signature_data) = value.signature_data {
+            extra_fields.insert(signature_data);
+        }
+
         Self {
             username: value.username,
             uuid: value.uuid,
-            signature_data: value.signature_data,
+            extra_fields,
         }
     }
 }
@@ -204,7 +206,7 @@ impl From<mcproto::versions::v761::packets::login::c2s::LoginStart> for LoginSta
         Self {
             username: value.username,
             uuid: value.uuid,
-            signature_data: None,
+            extra_fields: TypeMap::new(),
         }
     }
 }
@@ -214,7 +216,7 @@ impl From<mcproto::versions::v764::packets::login::c2s::LoginStart> for LoginSta
         Self {
             username: value.username,
             uuid: Some(value.uuid),
-            signature_data: None,
+            extra_fields: TypeMap::new(),
         }
     }
 }
@@ -228,20 +230,30 @@ impl From<LoginStart> for mcproto::versions::v3::packets::login::c2s::LoginStart
 }
 
 impl From<LoginStart> for mcproto::versions::v759::packets::login::c2s::LoginStart {
-    fn from(value: LoginStart) -> Self {
+    fn from(mut value: LoginStart) -> Self {
+        let signature_data =
+            value
+                .extra_fields
+                .remove::<mcproto::versions::v759::packets::login::c2s::login_start::SignatureData>();
+
         Self {
             username: value.username,
-            signature_data: value.signature_data,
+            signature_data,
         }
     }
 }
 
 impl From<LoginStart> for mcproto::versions::v760::packets::login::c2s::LoginStart {
-    fn from(value: LoginStart) -> Self {
+    fn from(mut value: LoginStart) -> Self {
+        let signature_data =
+            value
+                .extra_fields
+                .remove::<mcproto::versions::v760::packets::login::c2s::login_start::SignatureData>();
+
         Self {
             username: value.username,
-            signature_data: value.signature_data,
             uuid: value.uuid,
+            signature_data,
         }
     }
 }

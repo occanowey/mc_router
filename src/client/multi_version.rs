@@ -6,6 +6,7 @@ use std::{
 
 use mcproto::{error, handshake, packet, role, state, stdio::StdIoConnection, uuid::Uuid};
 use tracing::debug;
+use type_map::concurrent::TypeMap;
 
 use crate::{client::blocking_proxy, config::ServerAddr};
 
@@ -89,11 +90,7 @@ pub struct LoginStart {
     pub username: String,
     pub uuid: Option<Uuid>,
 
-    // this is meh
-    // TODO: figure out a better way to pass extra data for certain packets
-    // TODO:   maybe some kinda type map and erase all specific fields?
-    pub signature_data:
-        Option<mcproto::versions::v760::packets::login::c2s::login_start::SignatureData>,
+    pub extra_fields: TypeMap,
 }
 
 #[derive(Debug)]
